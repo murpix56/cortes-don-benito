@@ -182,7 +182,7 @@ const panel = $('#panel'), body = $('#panelBody');
 $('#grab').onclick = () => panel.classList.toggle('min');
 function showScreen(s) {
   S.screen = s; panel.classList.remove('min');
-  const v = { list: S.mode === 'citizen' ? viewCitizen : ({ cortes: viewAgent, import: viewImport, log: viewLog })[S.tab], detail: viewDetail, draw: viewDraw, form: viewForm }[s];
+  const v = { list: S.mode === 'citizen' ? viewCitizen : ({ cortes: viewAgent, import: viewImport, log: viewLog, users: viewUsers, system: viewSystem })[S.tab], detail: viewDetail, draw: viewDraw, form: viewForm }[s];
   v(); body.scrollTop = 0;
 }
 const opts = (list, sel, blank) => (blank ? '<option value="">Seleccionar…</option>' : '') + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
@@ -218,13 +218,15 @@ function viewCitizen() {
 }
 
 /* — Panel de agentes — */
-const tabsHTML = () => `<div class="tabs">${[['cortes', 'Cortes'], ['import', 'Importar'], ['log', 'Actividad']].map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-const ribbonHTML = () => (store.remote ? '' : '<div class="ribbon">Modo de pruebas: los datos están solo en este dispositivo. Para compartirlos con otros agentes y con los ciudadanos hay que conectar el servidor (ver servidor/LEEME.md).</div>');
+const TABS = [['cortes', 'Cortes', 'cortes.ver'], ['import', 'Importar', 'cortes.importar'], ['log', 'Auditoría', 'auditoria.ver'], ['users', 'Usuarios', ['usuarios.todos', 'usuarios.agentes']], ['system', 'Sistema', 'sistema']];
+const tabOK = p => (Array.isArray(p) ? p.some(x => store.can(x)) : store.can(p));
+const tabsHTML = () => `<div class="tabs">${TABS.filter(t => tabOK(t[2])).map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+const ribbonHTML = () => (store.isRemote() ? '' : '<div class="ribbon">Modo de pruebas: los datos están solo en este dispositivo. Para compartirlos con otros agentes y con los ciudadanos hay que conectar el servidor (ver servidor/LEEME.md).</div>');
 function viewAgent() {
   const now = S.view, all = S.cortes;
   const act = all.filter(c => estado(c, now) === 'act'), prog = all.filter(c => estado(c, now) === 'prog');
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
-    <div class="btns"><button class="btn pri" data-act="new">＋ Nuevo corte</button><button class="btn" data-act="print">🖨 Parte (PDF)</button></div>
+    <div class="btns">${store.can('cortes.crear') ? '<button class="btn pri" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn" data-act="print">🖨 Parte (PDF)</button></div>
     <div class="stats">
       <div class="stat"><b>${act.length}</b><span>Activos ahora</span></div>
       <div class="stat"><b>${prog.length}</b><span>Programados</span></div>
@@ -259,13 +261,13 @@ function viewDetail() {
       ${row('Inicio', i ? `${diaTxt(i, S.view)} ${hora(i)} (${i.toLocaleDateString('es-ES')})` : '')}
       ${row('Fin', f ? `${diaTxt(f, S.view)} ${hora(f)} (${f.toLocaleDateString('es-ES')})` : 'Sin fecha de fin prevista')}
       ${row('Longitud', fmtLen(totalLen(c.segs)) + (c.segs.length > 1 ? ` en ${c.segs.length} tramos` : ''))}
-      ${agent ? row('Referencia', c.referencia) + row('Notas internas', c.obs) + row('Visibilidad', c.publicado === false ? 'NO visible para los ciudadanos' : 'Visible para los ciudadanos') + row('Origen', c.origen === 'importado' ? 'Importado desde archivo' : '') +
+      ${agent ? row('Referencia', c.referencia) + row('Agente que registra', c.firma) + row('Notas internas', c.obs) + row('Visibilidad', c.publicado === false ? 'NO visible para los ciudadanos' : 'Visible para los ciudadanos') + row('Origen', c.origen === 'importado' ? 'Importado desde archivo' : '') +
         row('Creado por', c.creado_por) + row('Modificado', c.modificado ? `${new Date(c.modificado).toLocaleString('es-ES')}${c.modificado_por ? ' · ' + c.modificado_por : ''}` : '') : ''}
     </dl>
     ${agent ? `<div class="btns">
-      <button class="btn ${c.publicado === false ? 'pri' : ''}" data-act="pub">${c.publicado === false ? 'Publicar para ciudadanos' : 'Retirar de la vista pública'}</button>
-      <button class="btn" data-act="edit">Editar datos</button><button class="btn" data-act="redraw">Redibujar trazado</button>
-      <button class="btn" data-act="dup">Duplicar</button><button class="btn dng" data-act="del">Eliminar</button></div>` : ''}`;
+      ${store.can('cortes.publicar') ? `<button class="btn ${c.publicado === false ? 'pri' : ''}" data-act="pub">${c.publicado === false ? 'Publicar para ciudadanos' : 'Retirar de la vista pública'}</button>` : ''}
+      ${store.can('cortes.editar') ? '<button class="btn" data-act="edit">Editar datos</button><button class="btn" data-act="redraw">Redibujar trazado</button>' : ''}
+      ${store.can('cortes.crear') ? '<button class="btn" data-act="dup">Duplicar</button>' : ''}${store.can('cortes.borrar') ? '<button class="btn dng" data-act="del">Eliminar</button>' : ''}</div>` : ''}`;
 }
 
 /* — Dibujo — */
@@ -325,6 +327,7 @@ function viewForm() {
       <label>Desvío recomendado (visible al público)</label><textarea name="desvio" placeholder="Ej.: Circular por C/ Real y Avda. de Extremadura">${esc(b.desvio || '')}</textarea>
       <h3>Uso interno</h3>
       <label>Referencia (expediente, nº de registro…)</label><input name="referencia" value="${esc(b.referencia || '')}">
+      <label>Agente que registra (n.º de identificación)</label><input name="firma" value="${esc(b.firma || '')}" placeholder="Opcional">
       <label>Notas internas (no visibles al público)</label><textarea name="obs">${esc(b.obs || '')}</textarea>
       <label class="chk"><input type="checkbox" name="publicado" ${b.publicado === false ? '' : 'checked'}> Visible para los ciudadanos</label>
       <div class="btns"><button type="button" class="btn" data-act="backdraw">‹ Trazado</button><button type="button" class="btn" data-act="cancel">Cancelar</button><button type="submit" class="btn pri">Guardar</button></div>
@@ -347,7 +350,7 @@ async function saveForm(fd) {
   if (v.fin && parse(v.fin) < parse(v.inicio)) return toast('La fecha de fin es anterior a la de inicio');
   const data = {
     calle: v.calle, tramo: v.tramo.trim(), tipo: v.tipo, motivo: v.motivo, organismo: v.organismo, autoriza: v.autoriza, autoriza_detalle: v.autoriza_detalle.trim(),
-    referencia: v.referencia.trim(), inicio: v.inicio, fin: v.fin || '', desvio: v.desvio.trim(), obs: v.obs.trim(), publicado: v.publicado === 'on',
+    referencia: v.referencia.trim(), firma: (v.firma || '').trim(), inicio: v.inicio, fin: v.fin || '', desvio: v.desvio.trim(), obs: v.obs.trim(), publicado: v.publicado === 'on',
     segs: draft.segs.map(s => s.path.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)])),
   };
   const prev = draft.id ? S.cortes.find(c => c.id === draft.id) : null;
@@ -389,14 +392,78 @@ function viewImport() {
   body.innerHTML = h;
 }
 
-/* — Actividad — */
+/* — Auditoría — */
+const ROLN = { tic: 'Informática', mando: 'Mando', agente: 'Agente' };
+const ACC = { CORTE_ALTA: ['Alta de corte', '#12b76a'], CORTE_EDICION: ['Modificación', '#1570ef'], CORTE_BORRADO: ['Borrado', '#d92d20'], CORTE_RESTAURADO: ['Restaurado', '#12b76a'],
+  CORTE_PUBLICADO: ['Publicado', '#7a5af8'], CORTE_RETIRADO: ['Retirado de lo público', '#f79009'], IMPORTACION: ['Importación de archivo', '#c8a44d'], LOGIN: ['Acceso', '#98a2b3'],
+  LOGIN_FALLIDO: ['Acceso fallido', '#d92d20'], LOGOUT: ['Salida', '#98a2b3'], USUARIO_ALTA: ['Usuario creado', '#c8a44d'], USUARIO_CAMBIO: ['Usuario modificado', '#c8a44d'],
+  CLAVE_CAMBIO: ['Cambio de contraseña', '#98a2b3'], CLAVE_RESTABLECIDA: ['Contraseña restablecida', '#c8a44d'], COPIA_DESCARGADA: ['Copia descargada', '#98a2b3'] };
+const FILTROS_ACC = [['', 'Toda la actividad'], ['CORTE', 'Cortes'], ['IMPORTACION', 'Importaciones'], ['LOGIN', 'Accesos'], ['USUARIO', 'Usuarios']];
 async function viewLog() {
-  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Actividad reciente</h2><p class="mut">Cargando…</p>`;
-  let log; try { log = await store.loadLog(); } catch (e) { log = null; }
-  if (S.screen !== 'list' || S.tab !== 'log') return;
-  const A = { INSERT: 'Alta', UPDATE: 'Modificación', DELETE: 'Eliminación' };
-  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Actividad reciente</h2>` + (log === null ? '<p class="mut">No se pudo cargar el historial.</p>' : !log.length ? '<p class="empty">Aún no hay actividad registrada.</p>' :
-    log.map(l => `<div class="item static"><span class="dot" style="background:${l.accion === 'DELETE' ? '#d92d20' : l.accion === 'INSERT' ? '#12b76a' : '#1570ef'}"></span><div class="ib"><div class="t">${A[l.accion] || esc(l.accion)} · ${esc(l.calle || '')}</div><div class="s">${esc(new Date(l.fecha).toLocaleString('es-ES'))} · ${esc(l.usuario || '')}</div></div></div>`).join(''));
+  const f = S.auditF || (S.auditF = { accion: '', q: '' });
+  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Auditoría</h2>
+    <p class="mut small">Registro de quién hizo qué y cuándo. No se puede borrar ni modificar desde la aplicación.</p>
+    <div class="btns" style="margin-top:0">${store.can('auditoria.integridad') ? '<button class="btn" data-act="aud-verify">✔ Verificar integridad</button>' : ''}<button class="btn" data-act="aud-csv">⬇ Exportar CSV</button></div>
+    <div id="audVerify"></div>
+    <div class="filters"><input id="audq" class="search" type="search" placeholder="Buscar usuario, calle o detalle…" value="${esc(f.q)}" autocomplete="off">
+      <select id="audacc" aria-label="Tipo de actividad">${FILTROS_ACC.map(([k, l]) => `<option value="${k}"${f.accion === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div id="audList"><p class="mut">Cargando…</p></div>`;
+  await pintarAuditoria();
+}
+async function pintarAuditoria() {
+  let log = null, msg = '';
+  try { log = await store.loadAudit(S.auditF); } catch (e) { msg = e.message; }
+  if (S.screen !== 'list' || S.tab !== 'log' || !$('#audList')) return;
+  S.auditData = log || [];
+  $('#audList').innerHTML = log === null ? `<p class="mut">No se pudo cargar: ${esc(msg)}</p>` : !log.length ? '<p class="empty">No hay actividad con ese filtro.</p>' : log.map(l => {
+    const [lbl, col] = ACC[l.accion] || [l.accion, '#98a2b3'];
+    return `<div class="item static"><span class="dot" style="background:${col}"></span><div class="ib"><div class="t">${esc(lbl)}${l.calle ? ' · ' + esc(l.calle) : ''}</div>
+      <div class="s">${esc(new Date(l.fecha).toLocaleString('es-ES'))} · <b>${esc(l.usuario || '—')}</b>${l.rol ? ' (' + esc(ROLN[l.rol] || l.rol) + ')' : ''}${l.ip ? ' · ' + esc(l.ip) : ''}</div>
+      ${l.detalle ? `<div class="s">${esc(l.detalle)}</div>` : ''}
+      ${l.restaurable && store.can('auditoria.restaurar') ? `<div class="mini"><button class="btn" data-act="aud-restore" data-id="${esc(l.corte_id)}">Restaurar corte</button></div>` : ''}</div></div>`;
+  }).join('');
+}
+function exportAuditCSV() {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const rows = (S.auditData || []).map(l => [new Date(l.fecha).toLocaleString('es-ES'), l.usuario, ROLN[l.rol] || l.rol, (ACC[l.accion] || [l.accion])[0], l.calle, l.detalle, l.ip].map(q).join(';'));
+  download(`auditoria-cortes-${stamp()}.csv`, 'text/csv;charset=utf-8', '﻿' + ['fecha;usuario;perfil;accion;calle;detalle;ip', ...rows].join('\r\n'));
+}
+
+/* — Usuarios — */
+async function viewUsers() {
+  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Usuarios</h2><p class="mut">Cargando…</p>`;
+  let list = null, msg = '';
+  try { list = await store.listUsers(); } catch (e) { msg = e.message; }
+  if (S.screen !== 'list' || S.tab !== 'users') return;
+  const roles = store.can('usuarios.todos') ? ['agente', 'mando', 'tic'] : ['agente'];
+  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Usuarios</h2>` + (list === null ? `<p class="mut">No se pudo cargar: ${esc(msg)}</p>` : list.map(u => `
+    <div class="item static"><span class="dot" style="background:${u.activo ? '#12b76a' : '#98a2b3'}"></span><div class="ib">
+      <div class="t">${esc(u.nombre)} <span class="mut">· ${esc(u.usuario)}</span></div>
+      <div class="bs"><span class="badge ${u.activo ? 'act' : 'fin'}">${u.activo ? 'Activo' : 'Desactivado'}</span><span class="badge">${esc(u.rol_nombre)}</span>${u.cambiar_clave ? '<span class="badge prog">Debe cambiar la clave</span>' : ''}</div>
+      <div class="s">Último acceso: ${u.ultimo_acceso ? esc(new Date(u.ultimo_acceso).toLocaleString('es-ES')) : 'nunca'}</div>
+      <div class="mini"><button class="btn" data-act="usr-toggle" data-id="${u.id}" data-a="${u.activo ? 0 : 1}">${u.activo ? 'Desactivar' : 'Activar'}</button><button class="btn" data-act="usr-reset" data-id="${u.id}">Restablecer contraseña</button></div></div></div>`).join('')) +
+    `<h3>Nuevo usuario</h3><form id="uf" autocomplete="off">
+      <div class="two"><div><label>Usuario *</label><input name="usuario" required pattern="[A-Za-z0-9._\\-]{3,40}" autocapitalize="none" spellcheck="false"></div>
+      <div><label>Perfil *</label><select name="rol">${roles.map(r => `<option value="${r}">${ROLN[r]}</option>`).join('')}</select></div></div>
+      <label>Nombre completo *</label><input name="nombre" required maxlength="100">
+      <label>Contraseña temporal * (mín. 10, letras y números)</label><input name="clave" type="text" required minlength="10" autocomplete="off">
+      <p class="mut small">Se le pedirá cambiarla en su primer acceso. Se recomienda una cuenta personal por agente para que la auditoría identifique a quien actúa.</p>
+      <button class="btn pri wide">Crear usuario</button></form>`;
+}
+
+/* — Sistema (Informática) — */
+async function viewSystem() {
+  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Estado del sistema</h2><p class="mut">Cargando…</p>`;
+  let s = null, msg = '';
+  try { s = await store.system(); } catch (e) { msg = e.message; }
+  if (S.screen !== 'list' || S.tab !== 'system') return;
+  const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  body.innerHTML = `${ribbonHTML()}${tabsHTML()}<h2>Estado del sistema</h2>` + (s === null ? `<p class="mut">No se pudo cargar: ${esc(msg)}</p>` : `
+    ${s.integridad.ok ? `<div class="hint">✔ Auditoría íntegra (${s.integridad.total} registros).</div>` : `<div class="warn"><b>✘ La cadena de auditoría presenta alteraciones</b> (registro nº ${s.integridad.fallo_en}). Conservar una copia de la base de datos y avisar a la Jefatura.</div>`}
+    ${s.https ? '' : '<div class="warn">La conexión no está marcada como HTTPS (COOKIE_SECURE=0). En producción debe servirse siempre por HTTPS.</div>'}
+    <dl class="kv">${row('Versión', esc(s.version))}${row('Node.js', esc(s.node))}${row('Arranque', esc(new Date(s.arranque).toLocaleString('es-ES')))}${row('Zona horaria', esc(s.zona_horaria))}
+    ${row('Usuarios', s.usuarios)}${row('Registros de auditoría', s.auditoria)}${row('Tamaño de la base de datos', (s.bd_bytes / 1024).toFixed(0) + ' KB')}</dl>
+    <p class="mut small">Informática no puede ver ni modificar los cortes. Las copias de seguridad se hacen sobre el archivo de la base de datos (ver LEEME-INFORMATICA.md).</p>`);
 }
 
 /* ───────── Acciones ───────── */
@@ -414,6 +481,11 @@ body.addEventListener('click', ev => {
     switch (act) {
       case 'ctab': S.ctab = t.dataset.t; S.sel = null; renderMap(); showScreen('list'); break;
       case 'tab': S.tab = t.dataset.t; showScreen('list'); break;
+      case 'aud-verify': { const r = await store.verifyAudit(); $('#audVerify').innerHTML = r.ok ? `<div class="hint">✔ Cadena íntegra: ${r.total} registros sin alteraciones.<br><small>Sello del último registro: ${esc(r.ultimo_hash.slice(0, 20))}…</small></div>` : `<div class="warn"><b>✘ ALERTA:</b> el registro nº ${r.fallo_en} ha sido alterado o falta alguno anterior. Avisa a Informática y conserva una copia de la base de datos.</div>`; break; }
+      case 'aud-csv': exportAuditCSV(); break;
+      case 'aud-restore': if (confirm('¿Restaurar este corte? Volverá SIN publicar y quedará registrado.')) { await store.restore(t.dataset.id); toast('Corte restaurado (sin publicar)'); await reload(); renderMap(); await pintarAuditoria(); } break;
+      case 'usr-toggle': await store.patchUser(+t.dataset.id, { activo: t.dataset.a === '1' }); showScreen('list'); break;
+      case 'usr-reset': { const p = prompt('Contraseña temporal nueva (mín. 10 caracteres, con letras y números).\nEl usuario deberá cambiarla al entrar:'); if (p) { await store.patchUser(+t.dataset.id, { clave: p }); toast('Contraseña restablecida'); showScreen('list'); } break; }
       case 'new': startDraw(null); break;
       case 'open': select(t.dataset.id, true); break;
       case 'back': S.sel = null; renderMap(); showScreen('list'); break;
@@ -422,7 +494,7 @@ body.addEventListener('click', ev => {
       case 'edit': draft = newDraft(c); draft.stage = 'form'; renderMap(); showScreen('form'); break;
       case 'redraw': startDraw(c); break;
       case 'dup': { const cp = JSON.parse(JSON.stringify(c)); cp.id = uid(); cp.calle += ' (copia)'; cp.publicado = false; delete cp.creado; delete cp.modificado; delete cp.creado_por; delete cp.modificado_por; await store.save(cp); await reload(); S.scope = 'todos'; renderTop(); select(cp.id, false); toast('Duplicado (sin publicar)'); break; }
-      case 'del': if (confirm(`¿Eliminar el corte «${c.calle}»?`)) { await store.remove(c.id); S.sel = null; await reload(); renderMap(); showScreen('list'); toast('Corte eliminado'); } break;
+      case 'del': if (confirm(`¿Eliminar el corte «${c.calle}»? Quedará registrado en la auditoría y un mando podrá restaurarlo.`)) { await store.remove(c.id); S.sel = null; await reload(); renderMap(); showScreen('list'); toast('Corte eliminado'); } break;
       case 'pub': await store.save({ ...c, publicado: c.publicado === false }); await reload(); renderMap(); showScreen('detail'); toast(c.publicado === false ? 'Publicado para los ciudadanos' : 'Retirado de la vista pública'); break;
       case 'print': printReport(); break;
       case 'mode': draft.mode = t.dataset.m; if (draft.mode === 'libre') snapDot.remove(); showScreen('draw'); break;
@@ -442,7 +514,7 @@ body.addEventListener('click', ev => {
       case 'imp-draw': { const x = I.items[+t.dataset.i]; draftLayer.clearLayers(); startDraw({ ...x.corte, segs: x.segs.length ? x.segs : [] }, x); break; }
       case 'imp-go': {
         const list = I.items.filter(x => x.sel && x.segs.length).map(x => ({ id: uid(), ...x.corte, segs: x.segs.map(p => p.map(q => [+q[0].toFixed(6), +q[1].toFixed(6)])) }));
-        await store.saveMany(list); S.imp = null; draftLayer.clearLayers(); await reload(); S.tab = 'cortes'; S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
+        await store.saveMany(list, { tipo: 'importacion', archivo: I.name, filas: I.items.length }); S.imp = null; draftLayer.clearLayers(); await reload(); S.tab = 'cortes'; S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
         toast(`${list.length} cortes importados SIN publicar. Revísalos y publícalos uno a uno.`); break;
       }
     }
@@ -451,15 +523,22 @@ body.addEventListener('click', ev => {
 body.addEventListener('input', ev => {
   const t = ev.target;
   if (t.id === 'q') { S.q = t.value; refreshItems(); renderMap(); }
+  else if (t.id === 'audq') { clearTimeout(S.audT); S.audT = setTimeout(() => { S.auditF.q = t.value; pintarAuditoria(); }, 300); }
   else if (t.id === 'stq') { $('#stlist').innerHTML = searchStreets(t.value).map(n => `<option value="${esc(n)}">`).join(''); }
 });
 body.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'ftipo') { S.ftipo = t.value; refreshItems(); renderMap(); }
+  else if (t.id === 'audacc') { S.auditF.accion = t.value; pintarAuditoria(); }
   else if (t.id === 'faut') { S.faut = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'stq') { const b = streetBounds(t.value); if (b) map.fitBounds(b, { padding: [30, 30], maxZoom: 18 }); }
   else if (t.dataset.fmap) { S.imp.map[t.dataset.fmap] = t.value === '' ? undefined : +t.value; }
   else if (t.dataset.sel !== undefined) { S.imp.items[+t.dataset.sel].sel = t.checked; showScreen('list'); }
+});
+body.addEventListener('submit', ev => {
+  if (ev.target.id !== 'uf') return; ev.preventDefault();
+  const f = ev.target, b = f.querySelector('button'); b.disabled = true;
+  guard(async () => { await store.createUser({ usuario: f.usuario.value.trim(), nombre: f.nombre.value.trim(), rol: f.rol.value, clave: f.clave.value }); toast('Usuario creado. Deberá cambiar la contraseña al entrar.'); showScreen('list'); }).finally(() => { b.disabled = false; });
 });
 document.addEventListener('keydown', ev => {
   if (!draft || /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
@@ -476,9 +555,9 @@ function renderTop() {
   } else if (S.mode === 'agent') {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local · Panel de cortes</b><span>${esc(store.userName())}</span></div>
       <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>
-      <div class="row2"><input type="datetime-local" id="when" aria-label="Fecha y hora a consultar" value="${toInput(S.view)}"><button id="btnNow" class="chipbtn">Ahora</button>
-      <select id="scope" aria-label="Qué cortes mostrar"><option value="instante">En ese instante</option><option value="dia">Todo ese día</option><option value="todos">Todos los cortes</option></select></div>`;
-    $('#scope').value = S.scope;
+      ${store.can('cortes.ver') ? `<div class="row2"><input type="datetime-local" id="when" aria-label="Fecha y hora a consultar" value="${toInput(S.view)}"><button id="btnNow" class="chipbtn">Ahora</button>
+      <select id="scope" aria-label="Qué cortes mostrar"><option value="instante">En ese instante</option><option value="dia">Todo ese día</option><option value="todos">Todos los cortes</option></select></div>` : ''}`;
+    if ($('#scope')) $('#scope').value = S.scope;
   }
 }
 function refreshAll() {
@@ -501,8 +580,11 @@ const menu = $('#menu');
 function openMenu() {
   const items = S.mode === 'citizen'
     ? [['base', baseKey === 'osm' ? '🛰  Ver satélite' : '🗺  Ver plano'], ['share', '↗  Compartir esta página'], ['agente', '🔒  Acceso Policía Local'], ['inicio', '⌂  Inicio'], ['info', 'ℹ  Acerca de']]
-    : [['base', baseKey === 'osm' ? '🛰  Ver satélite (PNOA)' : '🗺  Ver plano de calles'], ['ciud', '👁  Ver como ciudadano'], ['gj', '⬇  Exportar GeoJSON (copia de seguridad)'], ['csv', '⬇  Exportar a Excel (CSV)'], ['imp', '⬆  Importar GeoJSON'],
-      ['print', '🖨  Parte para imprimir / PDF'], ['net', '↻  Actualizar callejero'], ...(store.remote ? [['salir', 'Cerrar sesión', 'red']] : [['wipe', 'Borrar todos los cortes', 'red']]), ['inicio', '⌂  Inicio'], ['info', 'ℹ  Acerca de']];
+    : [['base', baseKey === 'osm' ? '🛰  Ver satélite (PNOA)' : '🗺  Ver plano de calles'], ['ciud', '👁  Ver como ciudadano'],
+      ...(store.can('cortes.ver') ? [['gj', '⬇  Exportar GeoJSON (copia de seguridad)'], ['csv', '⬇  Exportar a Excel (CSV)'], ['print', '🖨  Parte para imprimir / PDF'], ['net', '↻  Actualizar callejero']] : []),
+      ...(store.can('cortes.importar') ? [['imp', '⬆  Importar GeoJSON']] : []),
+      ...(store.isRemote() && store.can('copia') ? [['copia', '💾  Descargar copia completa (JSON)']] : []),
+      ...(store.isRemote() ? [['clave', '🔑  Cambiar contraseña'], ['salir', 'Cerrar sesión', 'red']] : [['wipe', 'Borrar todos los cortes', 'red']]), ['inicio', '⌂  Inicio'], ['info', 'ℹ  Acerca de']];
   menu.innerHTML = items.map(([k, t, c]) => `<button data-m="${k}" class="${c || ''}">${t}</button>`).join(''); menu.hidden = !menu.hidden;
 }
 document.addEventListener('click', ev => { if (!menu.hidden && !menu.contains(ev.target)) menu.hidden = true; });
@@ -519,9 +601,11 @@ menu.onclick = ev => {
     else if (k === 'imp') $('#fileGeo').click();
     else if (k === 'print') printReport();
     else if (k === 'net') { await loadNet(true, setNetChip); toast(net.ready ? 'Callejero actualizado' : 'No se pudo descargar el callejero'); }
-    else if (k === 'salir') { store.logout(); location.hash = ''; }
+    else if (k === 'salir') { await store.logout(); location.hash = ''; }
+    else if (k === 'clave') showPwChange(false);
+    else if (k === 'copia') { download(`copia-cortes-${stamp()}.json`, 'application/json', JSON.stringify(await store.backup(), null, 1)); toast('Copia descargada (queda registrada en la auditoría)'); }
     else if (k === 'wipe') { if (S.cortes.length && confirm(`¿Borrar los ${S.cortes.length} cortes guardados en este dispositivo? No se puede deshacer.`)) { await store.removeAll(); await reload(); S.sel = null; renderMap(); showScreen('list'); } }
-    else if (k === 'info') alert('Cortes de calle · Policía Local de Don Benito\n\nHerramienta de apoyo visual: no sustituye a la resolución, bando o decreto que ordene el corte.\n\nCartografía: © colaboradores de OpenStreetMap (ODbL) y PNOA © IGN.' + (store.remote ? '' : '\n\nModo de pruebas: los datos se guardan solo en este dispositivo.'));
+    else if (k === 'info') alert('Cortes de calle · Policía Local de Don Benito\n\nHerramienta de apoyo visual: no sustituye a la resolución, bando o decreto que ordene el corte.\n\nCartografía: © colaboradores de OpenStreetMap (ODbL) y PNOA © IGN.' + (store.isRemote() ? '' : '\n\nModo de pruebas: los datos se guardan solo en este dispositivo.'));
   });
 };
 
@@ -560,7 +644,7 @@ $('#fileGeo').onchange = ev => guard(async () => {
       organismo: String(p.organismo || ''), autoriza: String(p.autoriza || ''), autoriza_detalle: String(p.autoriza_detalle || ''), referencia: String(p.referencia || ''),
       inicio: dt(p.inicio) || toInput(new Date()), fin: dt(p.fin), desvio: String(p.desvio || ''), obs: String(p.obs || ''), publicado: p.publicado !== false, origen: p.origen || 'manual', segs });
   }
-  await store.saveMany(list); await reload(); S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
+  await store.saveMany(list, { tipo: 'importacion', archivo: file.name, filas: fc.features.length }); await reload(); S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
   toast(`Importados ${list.length} cortes${skipped ? `, ${skipped} omitidos` : ''}`);
 });
 $('#fileTabla').onchange = ev => guard(async () => {
@@ -586,21 +670,37 @@ function renderLanding() {
   $('#landing').innerHTML = `<div class="lbox">${escudo('xl')}<h1>Policía Local<br>de Don Benito</h1><p class="sub">Cortes de calle y afecciones al tráfico</p>
     <div class="accs">
       <a class="acc" href="#/ciudadano"><i>👁</i><b>Ciudadanos</b><span>Consulta los cortes de calle vigentes y programados</span></a>
-      <a class="acc alt" href="#/agente"><i>🔒</i><b>Policía Local</b><span>${store.remote ? 'Acceso con usuario y contraseña' : 'Modo de pruebas (sin servidor)'}</span></a>
+      <a class="acc alt" href="#/agente"><i>🔒</i><b>Policía Local</b><span>${store.isRemote() ? 'Acceso con usuario y contraseña' : 'Modo de pruebas (sin servidor)'}</span></a>
     </div><small>Información orientativa. Respete siempre la señalización y las indicaciones de los agentes.</small></div>`;
 }
 function goLogin() { location.hash = '#/agente'; showLogin(); }
 function showLogin() {
   const m = $('#login'); m.hidden = false;
   m.innerHTML = `<div class="box"><button class="x" data-lg="close" aria-label="Cerrar">×</button>${escudo('sh lg')}<h2>Acceso Policía Local</h2><p class="mut">Introduce tus credenciales de agente.</p>
-    <form id="lf"><label>Correo electrónico</label><input name="email" type="email" autocomplete="username" required><label>Contraseña</label><input name="pw" type="password" autocomplete="current-password" required>
+    <form id="lf"><label>Usuario</label><input name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required><label>Contraseña</label><input name="pw" type="password" autocomplete="current-password" required>
     <div id="lerr" class="err" role="alert"></div><button class="btn pri wide">Entrar</button></form></div>`;
   $('#lf').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, b = f.querySelector('button'); b.disabled = true; $('#lerr').textContent = '';
-    try { await store.login(f.email.value, f.pw.value); m.hidden = true; await enter('agent'); }
+    try { const u = await store.login(f.usuario.value, f.pw.value); m.hidden = true; if (u.cambiar_clave) showPwChange(true); else await enter('agent'); }
     catch (e) { $('#lerr').textContent = e.message; b.disabled = false; }
   };
   m.querySelector('[data-lg=close]').onclick = () => { m.hidden = true; location.hash = ''; };
+  setTimeout(() => m.querySelector('input').focus(), 50);
+}
+
+function showPwChange(forced) {
+  const m = $('#login'); m.hidden = false;
+  m.innerHTML = `<div class="box">${forced ? '' : '<button class="x" data-lg="close" aria-label="Cerrar">×</button>'}${escudo('sh lg')}<h2>${forced ? 'Elige una contraseña nueva' : 'Cambiar contraseña'}</h2><p class="mut">Mínimo 10 caracteres, con letras y números.</p>
+    <form id="pf"><label>Contraseña actual</label><input name="actual" type="password" autocomplete="current-password" required><label>Contraseña nueva</label><input name="nueva" type="password" autocomplete="new-password" minlength="10" required>
+    <label>Repite la nueva</label><input name="nueva2" type="password" autocomplete="new-password" required><div id="perr" class="err" role="alert"></div><button class="btn pri wide">Guardar</button></form></div>`;
+  $('#pf').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target, b = f.querySelector('button'); $('#perr').textContent = '';
+    if (f.nueva.value !== f.nueva2.value) { $('#perr').textContent = 'Las contraseñas nuevas no coinciden'; return; }
+    b.disabled = true;
+    try { await store.changePassword(f.actual.value, f.nueva.value); m.hidden = true; toast('Contraseña cambiada'); if (forced) await enter('agent'); }
+    catch (e) { $('#perr').textContent = e.message; b.disabled = false; }
+  };
+  const x = m.querySelector('[data-lg=close]'); if (x) x.onclick = () => { m.hidden = true; };
   setTimeout(() => m.querySelector('input').focus(), 50);
 }
 
@@ -608,22 +708,23 @@ function showLogin() {
 async function reload() {
   try {
     if (S.mode === 'citizen') { const r = await store.loadPublic(); S.cortes = r.list; S.stale = r.stale; }
-    else { S.cortes = await store.loadAll(); S.stale = null; }
+    else if (store.can('cortes.ver')) { S.cortes = await store.loadAll(); S.stale = null; } else S.cortes = [];
   } catch (e) { toast('No se pudieron cargar los cortes: ' + e.message); if (/caducado|sesión/i.test(e.message)) goLogin(); }
 }
+const primeraPestana = () => (TABS.find(t => tabOK(t[2])) || TABS[0])[0];
 async function enter(mode) {
   if (draft) endDraw();
   S.mode = mode; document.body.dataset.mode = mode; $('#landing').hidden = mode !== 'landing';
   if (mode === 'landing') { renderLanding(); renderMap(); return; }
-  S.sel = null; S.screen = 'list'; S.tab = 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.live = true; S.imp = null;
+  S.sel = null; S.screen = 'list'; S.tab = mode === 'agent' ? primeraPestana() : 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.live = true; S.imp = null;
   renderTop(); await reload();
-  if (mode === 'agent') loadNet(false, setNetChip);
+  if (mode === 'agent' && store.can('cortes.crear')) loadNet(false, setNetChip);
   renderMap(); showScreen('list'); setTimeout(() => map.invalidateSize(), 50);
 }
 function router() {
   const h = location.hash;
   if (h.startsWith('#/ciudadano')) { $('#login').hidden = true; return enter('citizen'); }
-  if (h.startsWith('#/agente')) { if (!store.loggedIn()) { enter('landing'); showLogin(); return; } $('#login').hidden = true; return enter('agent'); }
+  if (h.startsWith('#/agente')) { if (!store.loggedIn()) { enter('landing'); showLogin(); return; } if (store.isRemote() && store.user().cambiar_clave) { enter('landing'); showPwChange(true); return; } $('#login').hidden = true; return enter('agent'); }
   $('#login').hidden = true; enter('landing');
 }
 window.addEventListener('hashchange', router);

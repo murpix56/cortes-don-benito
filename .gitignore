@@ -1,0 +1,4 @@
+servidor/datos/
+node_modules/
+*.db
+*.db-journal

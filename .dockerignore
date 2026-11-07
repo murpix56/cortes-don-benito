@@ -1,0 +1,4 @@
+.git
+servidor/datos
+node_modules
+*.db

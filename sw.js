@@ -17,6 +17,7 @@ self.addEventListener('fetch', e => {
   if (r.method !== 'GET') return;
   const u = new URL(r.url);
   if (u.origin !== location.origin) return;           // teselas, Overpass y servidor: red directa
+  if (u.pathname.includes('/api/')) return;           // la API (datos privados) nunca se guarda en la caché del navegador
   // Red primero (siempre la última versión); caché si no hay conexión.
   e.respondWith(fetch(r).then(x => {
     if (x.ok) { const cp = x.clone(); caches.open(C).then(c => c.put(r, cp)); }
