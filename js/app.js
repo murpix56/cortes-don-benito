@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261107b';
-import * as store from './store.js?v=20261107b';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261107b';
-import * as imp from './importer.js?v=20261107b';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108a';
+import * as store from './store.js?v=20261108a';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108a';
+import * as imp from './importer.js?v=20261108a';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -83,11 +83,11 @@ function renderMap() {
     if (sel) L.polyline(c.segs, { color: col, weight: 22, opacity: .28, interactive: false, lineCap: 'round' }).addTo(cortesLayer);
     const casing = L.polyline(c.segs, { color: '#fff', weight: 15, opacity: .9, lineCap: 'round', lineJoin: 'round' }).addTo(cortesLayer);
     L.polyline(c.segs, { color: col, weight: 8, opacity: unpub ? .55 : 1, dashArray: e === 'prog' ? '2 12' : unpub ? '10 8' : null, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(cortesLayer);
-    casing.bindTooltip(`<i class="d" style="background:${col}"></i><span><b>${esc(c.calle)}</b><small>${esc(cuando(c, S.view).principal)}${c.tipo !== 'total' ? ' · ' + esc(tipoTexto(c)) : ''}${unpub ? ' · sin publicar' : ''}</small></span>`, { sticky: true, className: 'tt', direction: 'top', offset: [0, -6] });
+    casing.bindTooltip(`<i class="d" style="background:${col}"></i><span><b>${esc(c.calle)}</b>${c.tramo ? `<small>${esc(c.tramo)}</small>` : ''}${c.tipo !== 'total' ? `<small class="k">${esc((TIPOS[c.tipo] || {}).human)}</small>` : ''}${ladoTxt(c) ? `<small>${esc(ladoTxt(c))}</small>` : ''}<small class="w">${esc(cuando(c, S.view).principal)}</small>${unpub ? '<small>Sin publicar</small>' : ''}</span>`, { sticky: true, className: 'tt', direction: 'top', offset: [0, -6] });
     casing.on('click', ev => { if (draft) return; L.DomEvent.stopPropagation(ev); select(c.id, true); });
   }
 }
-const encuadrar = (puntos, maxZoom = 18) => map.fitBounds(L.latLngBounds(puntos), { maxZoom, paddingTopLeft: [30, S.mode === 'citizen' ? 80 : 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
+const encuadrar = (puntos, maxZoom = 18) => map.fitBounds(L.latLngBounds(puntos), { maxZoom, paddingTopLeft: [30, S.mode === 'citizen' ? (innerWidth < 700 ? 150 : 90) : 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
 const fitCorte = c => encuadrar(c.segs.flat());
 
 /* ───────── Estado del callejero ───────── */
@@ -204,12 +204,13 @@ function showScreen(s) {
   v(); body.scrollTop = 0;
 }
 const opts = (list, sel, blank) => (blank ? '<option value="">Seleccionar…</option>' : '') + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
+const GEAR = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
-const ladoTxt = c => (c.tipo !== 'total' && c.lado && c.lado !== 'ambos' ? cap(LADOS[c.lado]) : '');
+const ladoTxt = c => { if (c.tipo === 'total') return ''; if (c.lado === 'pares' || c.lado === 'impares') return cap(LADOS[c.lado]); return c.tipo === 'estac' ? 'Ambos lados' : ''; };
 function rowHTML(c) {
   const e = estado(c, S.view), w = cuando(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, ld = ladoTxt(c);
   return `<div class="row${e === 'fin' ? ' done' : ''}" data-act="open" data-id="${esc(c.id)}"><i class="bar" style="background:${colorOf(c, e)}"></i>
-    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span class="sub">${esc(ld)}</span>` : ''}<span class="un">${esc(w.principal)}</span></div>
+    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${ld ? `<span class="ld" style="color:${T.color}">${esc(ld)}</span>` : ''}<span class="un">${esc(w.principal)}</span></div>
     ${c.publicado === false ? '<div class="flags"><em class="flag bad">Sin publicar</em></div>' : ''}<i class="chev">›</i></div>`;
 }
 const itemsHTML = () => {
@@ -224,9 +225,10 @@ const cortoHasta = (c, now) => {
   if (e === 'prog') return `Desde ${dia(i)}${horaCorta(i)} h`;
   return f ? `Hasta ${dia(f)}${horaCorta(f)} h` : 'Sin hora de fin';
 };
-function frowHTML(c) {
+function frowHTML(c, ctx) {
   const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog', ld = ladoTxt(c);
-  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span>${esc(ld)}</span>` : ''}</div>
+  const verTipo = ctx === 'prox' ? c.tipo !== 'total' : c.tipo === 'parcial';   // en «Prohibido estacionar» el título de la sección ya lo dice
+  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${verTipo ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span class="ld" style="color:${T.color}">${esc(ld)}</span>` : ''}</div>
     <span class="when${prog ? ' prog' : ''}">${esc(cortoHasta(c, S.view))}</span></div>`;
 }
 function viewCitizen() {
@@ -243,9 +245,9 @@ function viewCitizen() {
     <div class="fhead"><i class="live ${n || (q && hay) ? 'on' : 'ok'}"></i><div class="ft"><b>${esc(titulo)}</b>${extra ? `<small>${esc(extra)}</small>` : ''}</div>
       ${hay && !q ? `<button class="tg" data-act="toggle">${open ? 'Ocultar' : 'Ver'} <i class="chev ${open ? 'up' : ''}">⌄</i></button>` : ''}</div>
     ${q && !hay ? '<p class="okmsg">Tu calle no tiene ningún corte ni restricción activa ahora mismo.</p>' : ''}
-    ${open && hay ? `${cortes.length ? `<div class="flist">${cortes.map(frowHTML).join('')}</div>` : ''}
-      ${estac.length ? `<h3 class="sec"><i class="live" style="background:${TIPOS.estac.color}"></i>Prohibido estacionar</h3><div class="flist">${estac.map(frowHTML).join('')}</div>` : ''}
-      ${prox.length ? `<h3 class="sec">Próximamente</h3><div class="flist">${prox.map(frowHTML).join('')}</div>` : ''}` : ''}
+    ${open && hay ? `${cortes.length ? `<div class="flist">${cortes.map(c => frowHTML(c)).join('')}</div>` : ''}
+      ${estac.length ? `<h3 class="sec"><i class="live" style="background:${TIPOS.estac.color}"></i>Prohibido estacionar</h3><div class="flist">${estac.map(c => frowHTML(c, 'estac')).join('')}</div>` : ''}
+      ${prox.length ? `<h3 class="sec">Próximamente</h3><div class="flist">${prox.map(c => frowHTML(c, 'prox')).join('')}</div>` : ''}` : ''}
     <p class="foot">Información orientativa. Respete la señalización y las indicaciones de los agentes.</p>`;
 }
 
@@ -259,11 +261,11 @@ function viewAgent() {
   const act = all.filter(c => estado(c, now) === 'act').length, prog = all.filter(c => estado(c, now) === 'prog').length, sinpub = all.filter(c => c.publicado === false).length;
   const fechaTxt = S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '') : 'Fecha';
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
+    <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
     <div class="period">${ddHTML('periodo', 'periodo', S.when, [['ahora', 'Ahora mismo'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['fecha', S.when === 'fecha' && S.fecha ? fechaTxt : 'Otra fecha…'], ['todos', 'Todos (incluye finalizados)']])}
       ${S.when === 'fecha' ? `<input type="date" id="fechaSel" class="datebox" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha">` : ''}</div>
     <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
-        <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
-    <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
+        <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
     <details class="more"><summary>Más filtros</summary><div class="filters">
       ${ddHTML('ftipo', 'ftipo', S.ftipo, [['', 'Todos los tipos'], ...Object.entries(TIPOS).map(([k, v]) => [k, v.human])])}
       ${ddHTML('faut', 'faut', S.faut, [['', 'Autoriza: todos'], ...AUTORIZA.map(x => [x, x])])}</div></details>
@@ -594,10 +596,10 @@ const topbar = $('#topbar');
 function renderTop() {
   topbar.className = 'topbar ' + S.mode;
   if (S.mode === 'citizen') {
-    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
+    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes">${GEAR}</button></div>`;
   } else if (S.mode === 'agent') {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Panel de cortes</b><span>Policía Local · ${esc(store.userName())}</span></div>
-      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnPanel" class="iconbtn" aria-label="Mostrar u ocultar el panel" title="Mostrar u ocultar el panel"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
+      <button id="btnPanel" class="iconbtn" aria-label="Mostrar u ocultar el panel" title="Mostrar u ocultar el panel"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes">${GEAR}</button></div>`;
   }
 }
 function refreshAll() {
@@ -606,9 +608,10 @@ function refreshAll() {
   else if (S.screen === 'list' && !(document.activeElement && ['q', 'ftipo', 'faut'].includes(document.activeElement.id)) && (S.mode === 'citizen' || S.tab === 'cortes')) showScreenKeepScroll();
 }
 function showScreenKeepScroll() { const y = body.scrollTop; showScreen('list'); body.scrollTop = y; }
-topbar.addEventListener('click', ev => {
+document.addEventListener('click', ev => {
   if (ev.target.closest('#btnPanel')) { if (innerWidth >= 900) document.body.classList.toggle('panel-off'); else panel.classList.toggle('min'); return; }
-  if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); }
+  if (ev.target.closest('#btnMenu')) { openMenu(); return; }
+  if (!menu.hidden && !menu.contains(ev.target)) menu.hidden = true;
 });
 
 /* ───────── Menú de ajustes ───────── */
@@ -639,7 +642,6 @@ function openMenu() {
       [store.isRemote() ? ['salir', 'Cerrar sesión', 'out', 'red'] : ['wipe', 'Borrar todos los cortes', 'trash', 'red'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]].filter(g => g.length);
   menu.innerHTML = groups.map(g => `<div class="mg">${g.map(([k, t, i, c]) => `<button data-m="${k}" class="${c || ''}">${ic(i)}<span>${t}</span></button>`).join('')}</div>`).join(''); menu.hidden = !menu.hidden;
 }
-document.addEventListener('click', ev => { if (!menu.hidden && !menu.contains(ev.target)) menu.hidden = true; });
 menu.onclick = ev => {
   const b = ev.target.closest('[data-m]'); if (!b) return; const k = b.dataset.m; menu.hidden = true;
 
@@ -770,9 +772,11 @@ async function enter(mode) {
   if (draft) endDraw();
   S.mode = mode; document.body.dataset.mode = mode; $('#landing').hidden = mode !== 'landing';
   if (mode === 'landing') { renderLanding(); renderMap(); return; }
-  const cs = $('#csearch'); cs.hidden = mode !== 'citizen'; cs.innerHTML = '';
+  const cs = $('#ctop'); cs.hidden = mode !== 'citizen'; cs.innerHTML = '';
   if (mode === 'citizen') {
-    cs.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input id="cq" type="search" placeholder="¿Tu calle está cortada? Búscala aquí…" autocomplete="off" autocapitalize="none" aria-label="Buscar una calle">';
+    cs.innerHTML = `<div class="cpill">${escudo('sh')}<div><b>Policía Local</b><span>Don Benito · Cortes de calle</span></div></div>
+      <div class="csearch"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input id="cq" type="search" placeholder="¿Tu calle está cortada? Búscala aquí…" autocomplete="off" autocapitalize="none" aria-label="Buscar una calle"></div>
+      <button id="btnMenu" class="cgear" aria-label="Ajustes" title="Ajustes">${GEAR}</button>`;
     $('#cq').oninput = ev => { clearTimeout(S.cqT); S.cqT = setTimeout(() => { S.q = ev.target.value.trim(); S.sel = null; renderMap(); showScreen('list'); const l = S.cortes.filter(c => estado(c, S.view) !== 'fin' && matchesFilters(c)); if (S.q && l.length) encuadrar(l.flatMap(c => c.segs.flat()), 17); }, 200); };
   }
   $('#pshow').hidden = mode !== 'agent'; document.body.classList.remove('panel-off');
