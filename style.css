@@ -355,8 +355,11 @@ body[data-mode=citizen] .menu{top:calc(env(safe-area-inset-top) + 72px);right:12
 }
 
 /* ───── Líneas de lado y rótulo ───── */
-.row .rb span.ld,.frow .fl2 span.ld{font-size:14px;font-weight:700}
 .tt{align-items:flex-start!important}
 .tt .d{margin-top:5px}
 .tt small.k{opacity:1;font-weight:600}
 .tt small.w{opacity:1;font-weight:600;margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,.18)}
+
+.dateb{position:relative;cursor:pointer}
+.dateb svg{flex:none;color:var(--mut)}
+.dateb input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;min-height:0}

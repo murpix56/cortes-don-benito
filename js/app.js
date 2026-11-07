@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108a';
-import * as store from './store.js?v=20261108a';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108a';
-import * as imp from './importer.js?v=20261108a';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108b';
+import * as store from './store.js?v=20261108b';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108b';
+import * as imp from './importer.js?v=20261108b';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -210,7 +210,7 @@ const ladoTxt = c => { if (c.tipo === 'total') return ''; if (c.lado === 'pares'
 function rowHTML(c) {
   const e = estado(c, S.view), w = cuando(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, ld = ladoTxt(c);
   return `<div class="row${e === 'fin' ? ' done' : ''}" data-act="open" data-id="${esc(c.id)}"><i class="bar" style="background:${colorOf(c, e)}"></i>
-    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${ld ? `<span class="ld" style="color:${T.color}">${esc(ld)}</span>` : ''}<span class="un">${esc(w.principal)}</span></div>
+    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${ld ? `<span class="sub">${esc(ld)}</span>` : ''}<span class="un">${esc(w.principal)}</span></div>
     ${c.publicado === false ? '<div class="flags"><em class="flag bad">Sin publicar</em></div>' : ''}<i class="chev">›</i></div>`;
 }
 const itemsHTML = () => {
@@ -228,7 +228,7 @@ const cortoHasta = (c, now) => {
 function frowHTML(c, ctx) {
   const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog', ld = ladoTxt(c);
   const verTipo = ctx === 'prox' ? c.tipo !== 'total' : c.tipo === 'parcial';   // en «Prohibido estacionar» el título de la sección ya lo dice
-  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${verTipo ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span class="ld" style="color:${T.color}">${esc(ld)}</span>` : ''}</div>
+  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${verTipo ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span>${esc(ld)}</span>` : ''}</div>
     <span class="when${prog ? ' prog' : ''}">${esc(cortoHasta(c, S.view))}</span></div>`;
 }
 function viewCitizen() {
@@ -259,11 +259,11 @@ const ribbonHTML = () => (store.isRemote() ? '' : '<div class="ribbon">Modo de p
 function viewAgent() {
   const now = S.view, all = S.cortes;
   const act = all.filter(c => estado(c, now) === 'act').length, prog = all.filter(c => estado(c, now) === 'prog').length, sinpub = all.filter(c => c.publicado === false).length;
-  const fechaTxt = S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '') : 'Fecha';
+  const fechaLarga = S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(/\./g, '') : 'Elegir fecha';
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
     <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
-    <div class="period">${ddHTML('periodo', 'periodo', S.when, [['ahora', 'Ahora mismo'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['fecha', S.when === 'fecha' && S.fecha ? fechaTxt : 'Otra fecha…'], ['todos', 'Todos (incluye finalizados)']])}
-      ${S.when === 'fecha' ? `<input type="date" id="fechaSel" class="datebox" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha">` : ''}</div>
+    <div class="period">${ddHTML('periodo', 'periodo', S.when, [['ahora', 'Ahora mismo'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['fecha', 'Otra fecha'], ['todos', 'Todos (incluye finalizados)']])}
+      ${S.when === 'fecha' ? `<label class="ddb dateb"><span>${esc(fechaLarga)}</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><input type="date" id="fechaSel" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha"></label>` : ''}</div>
     <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
         <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
     <details class="more"><summary>Más filtros</summary><div class="filters">
@@ -563,6 +563,7 @@ body.addEventListener('click', ev => {
     }
   });
 });
+body.addEventListener('click', ev => { if (ev.target.id === 'fechaSel') { try { ev.target.showPicker(); } catch { /* sin soporte: se abre al tocar */ } } });
 body.addEventListener('input', ev => {
   const t = ev.target;
   if (t.id === 'q') { S.q = t.value; refreshItems(); renderMap(); }
@@ -573,7 +574,7 @@ body.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'ftipo') { S.ftipo = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'audacc') { S.auditF.accion = t.value; pintarAuditoria(); }
-  else if (t.id === 'periodo') { S.when = t.value; if (S.when === 'fecha' && !S.fecha) S.fecha = fechaInput(new Date()); S.sel = null; renderMap(); showScreen('list'); }
+  else if (t.id === 'periodo') { S.when = t.value; if (S.when === 'fecha' && !S.fecha) S.fecha = fechaInput(new Date()); S.sel = null; renderMap(); showScreen('list'); if (S.when === 'fecha') setTimeout(() => { try { $('#fechaSel').showPicker(); } catch { /* el navegador lo abrirá al tocar */ } }, 0); }
   else if (t.id === 'fechaSel') { if (t.value) { S.when = 'fecha'; S.fecha = t.value; S.sel = null; renderMap(); showScreen('list'); } }
   else if (t.id === 'faut') { S.faut = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'stq') { const b = streetBounds(t.value); if (b) map.fitBounds(b, { padding: [30, 30], maxZoom: 18 }); }
