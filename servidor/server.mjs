@@ -87,7 +87,7 @@ function exigir(ctx, perm) {
 
 /* ───────── Cortes ───────── */
 const filaACorte = r => ({ id: r.id, ...JSON.parse(r.datos), publicado: !!r.publicado, creado: r.creado, creado_por: r.creado_por, modificado: r.modificado, modificado_por: r.modificado_por });
-const PUBLICOS = ['id', 'calle', 'tramo', 'tipo', 'lado', 'color', 'motivo', 'organismo', 'autoriza', 'autoriza_detalle', 'inicio', 'fin', 'desvio', 'segs'];
+const PUBLICOS = ['id', 'calle', 'tramo', 'tipo', 'lado', 'motivo', 'organismo', 'autoriza', 'autoriza_detalle', 'inicio', 'fin', 'desvio', 'segs'];
 function listarPublico() {
   const corte = localMin(-2 * 864e5);
   return db.prepare('select * from cortes where publicado = 1 and eliminado = 0').all().map(filaACorte)

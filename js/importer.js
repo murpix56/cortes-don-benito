@@ -1,6 +1,6 @@
 /* Importación desde Excel (.xlsx) y CSV: lectura, correspondencia de columnas y localización en el mapa */
-import { toInput, normKey, TIPOS } from './util.js?v=20261108d';
-import { locateTramo } from './net.js?v=20261108d';
+import { toInput, normKey, TIPOS } from './util.js?v=20261108c';
+import { locateTramo } from './net.js?v=20261108c';
 
 /* ───────── Lectura de archivos ───────── */
 export async function readTable(file) {
