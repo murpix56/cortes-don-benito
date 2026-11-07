@@ -1,6 +1,6 @@
 // Service worker del mapa de cortes: guarda la aplicación para abrirla sin conexión.
 // Los datos viven en el servidor (o en el dispositivo en modo de pruebas), no aquí.
-const C = 'cortes-shell-20261108b';
+const C = 'cortes-shell-20261108c';
 const FILES = ['./', 'index.html', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'js/app.js', 'boot.js', 'js/util.js', 'js/store.js', 'js/net.js', 'js/importer.js',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',

@@ -363,3 +363,15 @@ body[data-mode=citizen] .menu{top:calc(env(safe-area-inset-top) + 72px);right:12
 .dateb{position:relative;cursor:pointer}
 .dateb svg{flex:none;color:var(--mut)}
 .dateb input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;min-height:0}
+
+/* ───── Nombre de la calle sobre el corte ───── */
+.sl-wrap{background:none;border:0}
+.sl{position:absolute;left:0;top:0;transform:translate(-50%,-50%) rotate(var(--r,0deg));white-space:nowrap;font:700 12.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff;letter-spacing:.01em;text-shadow:-1px -1px 0 #101828,1px -1px 0 #101828,-1px 1px 0 #101828,1px 1px 0 #101828,0 0 4px rgba(16,24,40,.7);pointer-events:none}
+.sl-wrap.hide{display:none}
+
+/* ───── Modo captura: solo el plano ───── */
+.capx{display:none}
+body.captura .topbar,body.captura .panel,body.captura .ctop,body.captura .pshow,body.captura .leaflet-control-zoom,body.captura .menu{display:none!important}
+body.captura .main{flex-direction:column}
+body.captura .capx{display:flex;position:fixed;z-index:9000;top:calc(env(safe-area-inset-top) + 10px);right:10px;width:34px;height:34px;border-radius:50%;border:0;background:rgba(16,24,40,.55);color:#fff;font-size:15px;align-items:center;justify-content:center;cursor:pointer;opacity:.5;transition:opacity .2s}
+body.captura .capx:hover{opacity:1}
