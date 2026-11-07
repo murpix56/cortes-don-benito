@@ -2,8 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Cortes de calle · Don Benito</title>
+<title>Cortes de calle · Policía Local de Don Benito</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Cortes de calle y afecciones al tráfico en Don Benito. Policía Local.">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -13,24 +14,9 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-mode="landing">
 <div id="app">
-  <header class="topbar">
-    <div class="row1">
-      <h1>Cortes de calle <span>Don Benito</span></h1>
-      <span class="netchip" id="netchip" title="Estado del callejero"></span>
-      <button id="btnMenu" class="iconbtn" aria-label="Menú" aria-haspopup="true">⋯</button>
-    </div>
-    <div class="row2">
-      <input type="datetime-local" id="when" aria-label="Fecha y hora a consultar">
-      <button id="btnNow" class="chipbtn">Ahora</button>
-      <select id="scope" aria-label="Qué cortes mostrar">
-        <option value="instante">En ese instante</option>
-        <option value="dia">Todo ese día</option>
-        <option value="todos">Todos los cortes</option>
-      </select>
-    </div>
-  </header>
+  <header id="topbar" class="topbar"></header>
   <div class="main">
     <div id="map"></div>
     <aside id="panel" class="panel" aria-live="polite">
@@ -40,11 +26,16 @@
   </div>
 </div>
 
+<div id="landing" class="landing"></div>
+<div id="login" class="modal" hidden></div>
 <div id="menu" class="menu" hidden></div>
+<section id="report"></section>
 <div id="toast" role="status"></div>
-<input type="file" id="fileImport" accept=".geojson,.json,application/geo+json,application/json" hidden>
+<input type="file" id="fileGeo" accept=".geojson,.json,application/geo+json,application/json" hidden>
+<input type="file" id="fileTabla" accept=".xlsx,.xlsm,.csv,.txt,text/csv" hidden>
 
+<script src="config.js"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
-<script src="app.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
