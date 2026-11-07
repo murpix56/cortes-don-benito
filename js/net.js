@@ -1,19 +1,21 @@
 /* Callejero (OpenStreetMap vía Overpass), grafo, ajuste a calle, rutas y localización de tramos por nombre */
-import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108c';
+import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108d';
 
 export const CFG = {
   center: [38.9565, -5.8612], zoom: 15,
   bbox: [38.936, -5.884, 38.976, -5.838],      // S, O, N, E (casco urbano Don Benito–Villanueva)
   snapMax: 70,
 };
-const NET_KEY = 'cortes.callejero.v1';
+const NET_KEY = 'cortes.callejero.v2';
 const KY = 111320, KX = 111320 * Math.cos(CFG.center[0] * Math.PI / 180);
 const xy = (lat, lon) => [(lon - CFG.center[1]) * KX, (lat - CFG.center[0]) * KY];
 
-export const net = { ready: false, adj: [], X: [], Y: [], lat: [], lon: [], ea: [], eb: [], el: [], en: [], names: [], lines: [], nways: 0, _ni: null, _ne: null };
+export const net = { ready: false, adj: [], X: [], Y: [], lat: [], lon: [], ea: [], eb: [], el: [], en: [], names: [], lines: [], lineH: [], nways: 0, _ni: null, _ne: null };
+/* Anchura de dibujo (m) según el tipo de vía, para el plano gris */
+export const anchoVia = h => (/^(motorway|trunk|primary)/.test(h) ? 13 : /^(secondary|tertiary)/.test(h) ? 10 : /^(residential|unclassified|living_street|pedestrian)/.test(h) ? 7.5 : 4.5);
 
 export function buildNet(ways) {
-  Object.assign(net, { ready: false, adj: [], X: [], Y: [], lat: [], lon: [], ea: [], eb: [], el: [], en: [], names: [], lines: [], nways: ways.length, _ni: null, _ne: null });
+  Object.assign(net, { ready: false, adj: [], X: [], Y: [], lat: [], lon: [], ea: [], eb: [], el: [], en: [], names: [], lines: [], lineH: [], nways: ways.length, _ni: null, _ne: null });
   const idx = new Map(), nameIdx = new Map();
   const nm = s => { s = s || ''; if (!nameIdx.has(s)) { nameIdx.set(s, net.names.length); net.names.push(s); } return nameIdx.get(s); };
   const node = (id, lat, lon) => {
@@ -34,7 +36,7 @@ export function buildNet(ways) {
       net.ea.push(a); net.eb.push(b); net.el.push(len); net.en.push(ni);
       net.adj[a].push([b, len, ni]); net.adj[b].push([a, len, ni]);
     }
-    net.lines.push(line);
+    net.lines.push(line); net.lineH.push(w.h || '');
   }
   net.ready = net.ea.length > 0;
 }
@@ -54,7 +56,7 @@ async function fetchOverpass() {
       for (const el of j.elements || []) {
         if (el.type !== 'way' || !el.geometry || !el.nodes || el.nodes.length !== el.geometry.length) continue;
         const g = []; for (const p of el.geometry) g.push(+p.lat.toFixed(6), +p.lon.toFixed(6));
-        ways.push({ n: el.nodes, g, name: (el.tags && (el.tags.name || el.tags.ref)) || '' });
+        ways.push({ n: el.nodes, g, name: (el.tags && (el.tags.name || el.tags.ref)) || '', h: (el.tags && el.tags.highway) || '' });
       }
       if (!ways.length) throw new Error('respuesta vacía');
       return ways;

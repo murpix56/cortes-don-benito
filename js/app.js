@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108c';
-import * as store from './store.js?v=20261108c';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108c';
-import * as imp from './importer.js?v=20261108c';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108d';
+import * as store from './store.js?v=20261108d';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames, anchoVia } from './net.js?v=20261108d';
+import * as imp from './importer.js?v=20261108d';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -33,9 +33,37 @@ const bases = {
   osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }),
   sat: L.tileLayer('https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible&format=image/jpeg&tilematrix={z}&tilerow={y}&tilecol={x}', { maxZoom: 19, attribution: 'PNOA © <a href="https://www.ign.es">IGN</a>' }),
 };
-let baseKey = lsGet(BASE_KEY, 'osm'); if (!bases[baseKey]) baseKey = 'osm';
-bases[baseKey].addTo(map);
-function toggleBase() { map.removeLayer(bases[baseKey]); baseKey = baseKey === 'osm' ? 'sat' : 'osm'; bases[baseKey].addTo(map); bases[baseKey].bringToBack(); lsSet(BASE_KEY, baseKey); }
+let baseKey = lsGet(BASE_KEY, 'osm'); if (!bases[baseKey] && baseKey !== 'gris') baseKey = 'osm';
+let mapaListo = false;
+/* Plano gris: fondo gris y calles blancas dibujadas con el callejero (sin teselas, sin claves) */
+map.createPane('plano'); map.getPane('plano').style.zIndex = 250;
+const rPlano = L.canvas({ pane: 'plano', padding: 0.5 });
+const ATRIB_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+let grisGrupos = null;
+const pesoGris = m => Math.min(46, Math.max(1.2, m / (156543.03392 * Math.cos(CFG.center[0] * Math.PI / 180) / Math.pow(2, map.getZoom()))));
+function estiloGris() { if (grisGrupos) grisGrupos.forEach(g => g.layer.setStyle({ weight: pesoGris(g.m) })); }
+function mostrarGris(on) {
+  if (!on) { if (grisGrupos) grisGrupos.forEach(g => map.removeLayer(g.layer)); map.getContainer().style.background = ''; map.attributionControl.removeAttribution(ATRIB_OSM); return; }
+  map.getContainer().style.background = '#e6e6e6';
+  if (!net.ready) { toast('Descargando el callejero para el plano gris…'); loadNet(false, setNetChip).then(() => { if (baseKey === 'gris') mostrarGris(true); }); return; }
+  if (!grisGrupos || grisGrupos.fuente !== net.lines) {
+    const porAncho = new Map();
+    net.lines.forEach((l, i) => { const m = anchoVia(net.lineH[i]); if (!porAncho.has(m)) porAncho.set(m, []); porAncho.get(m).push(l); });
+    grisGrupos = [...porAncho].sort((a, b) => b[0] - a[0]).map(([m, ls]) => ({ m, layer: L.polyline(ls, { color: '#fff', weight: 3, lineCap: 'round', lineJoin: 'round', interactive: false, renderer: rPlano, pane: 'plano' }) }));
+    grisGrupos.fuente = net.lines;
+  }
+  grisGrupos.forEach(g => g.layer.addTo(map)); estiloGris();
+  map.attributionControl.addAttribution(ATRIB_OSM);
+}
+function setBase(k) {
+  if (bases[baseKey] && map.hasLayer(bases[baseKey])) map.removeLayer(bases[baseKey]);
+  if (baseKey === 'gris') mostrarGris(false);
+  baseKey = k; lsSet(BASE_KEY, k); document.body.dataset.base = k;
+  if (k === 'gris') mostrarGris(true); else { bases[k].addTo(map); bases[k].bringToBack(); }
+  if (mapaListo) renderMap();
+}
+map.on('zoomend', estiloGris);
+setBase(baseKey);
 new ResizeObserver(() => map.invalidateSize()).observe(map.getContainer());
 
 const cortesLayer = L.featureGroup().addTo(map);
@@ -67,7 +95,7 @@ map.on('zoomend', actualizarRotulos);
 let netLayer = null, netLayerFor = null;
 const snapDot = L.circleMarker([0, 0], { radius: 7, color: '#1570ef', weight: 3, fillColor: '#fff', fillOpacity: 1, interactive: false });
 function showNetLayer() {
-  if (!net.ready) return;
+  if (!net.ready || baseKey === 'gris') return;
   if (!netLayer || netLayerFor !== net.lines) { if (netLayer) map.removeLayer(netLayer); netLayer = L.polyline(net.lines, { color: '#475467', weight: 2, opacity: .55, interactive: false }); netLayerFor = net.lines; }
   netLayer.addTo(map);
 }
@@ -95,7 +123,8 @@ const byUrgency = (a, b) => {
   return ea === 'prog' ? +parse(a.inicio) - +parse(b.inicio) : fa - fb;
 };
 const shown = () => S.cortes.filter(c => visible(c) && matchesFilters(c)).sort(byUrgency);
-const colorOf = (c, e) => (e === 'fin' ? GREY : (TIPOS[c.tipo] || TIPOS.total).color);
+const PALETA = [['', 'Automático'], ['#16a34a', 'Verde'], ['#d92d20', 'Rojo'], ['#f79009', 'Naranja'], ['#1570ef', 'Azul'], ['#7a5af8', 'Morado'], ['#101828', 'Negro']];
+const colorOf = (c, e) => (e === 'fin' ? GREY : (c.color || (TIPOS[c.tipo] || TIPOS.total).color));
 
 /* ───────── Dibujo de cortes en el mapa ───────── */
 function renderMap() {
@@ -373,6 +402,8 @@ function viewForm() {
         <label class="fl" id="ladoLbl">${tipo === 'parcial' ? '¿Qué carril se corta? *' : '¿Qué lado?'}</label>
         <div class="choices c3">${[['ambos', 'Ambos lados'], ['pares', 'Pares'], ['impares', 'Impares']].map(([k, l]) => `<label data-l="${k}"${k === 'ambos' && tipo === 'parcial' ? ' hidden' : ''}><input type="radio" name="lado" value="${k}"${k === lado ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
         <p class="mut small">Según la numeración de los portales de la calle.</p></div>
+      <label class="fl">Color del trazo <span class="opt">(opcional)</span></label>
+      <div class="swatches">${PALETA.map(([v, n]) => `<label title="${n}"><input type="radio" name="color" value="${v}"${(b.color || '') === v ? ' checked' : ''}><span class="${v ? '' : 'auto'}"${v ? ` style="background:${v}"` : ''}>${v ? '' : 'Auto'}</span></label>`).join('')}</div>
       <label class="fl">Motivo</label>${ddHTML('motivo', 'motivo', b.motivo || MOTIVOS[0], [...new Set([...MOTIVOS, ...(b.motivo && !MOTIVOS.includes(b.motivo) ? [b.motivo] : [])])].map(m => [m, m]))}
       <label class="fl">Quién autoriza *</label>
       <div class="choices c2">${AUTORIZA.map(a => `<label><input type="radio" name="autoriza" value="${esc(a)}"${a === aut ? ' checked' : ''}><span>${esc(a)}</span></label>`).join('')}</div>
@@ -421,7 +452,7 @@ async function saveForm(fd) {
     if (fin < inicio) return toast('El corte termina antes de empezar');
   }
   const data = {
-    calle: v.calle, tramo: (v.tramo || '').trim(), tipo: v.tipo || 'total', lado: (v.tipo || 'total') === 'total' ? '' : (v.lado || ''), motivo: v.motivo, autoriza: v.autoriza, autoriza_detalle: (v.autoriza_detalle || '').trim(),
+    calle: v.calle, tramo: (v.tramo || '').trim(), tipo: v.tipo || 'total', color: /^#[0-9a-f]{6}$/i.test(v.color || '') ? v.color : '', lado: (v.tipo || 'total') === 'total' ? '' : (v.lado || ''), motivo: v.motivo, autoriza: v.autoriza, autoriza_detalle: (v.autoriza_detalle || '').trim(),
     referencia: (v.referencia || '').trim(), firma: (v.firma || '').trim(), inicio, fin, desvio: (v.desvio || '').trim(), obs: (v.obs || '').trim(), publicado: v.publicado === 'on',
     segs: draft.segs.map(s => s.path.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)])),
   };
@@ -662,16 +693,18 @@ const ICON = {
   info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
   home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+  map: '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+  grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
   type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
 };
 const ic = k => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 function openMenu() {
-  const base = ['base', baseKey === 'osm' ? 'Vista satélite' : 'Vista plano', 'layers'], nombres = ['rotulos', rotulosOn ? 'Ocultar nombres sobre el corte' : 'Mostrar nombres sobre el corte', 'type'], captura = ['captura', 'Modo captura', 'camera'];
+  const B = [['osm', 'Plano de calles', 'map'], ['sat', 'Satélite', 'layers'], ['gris', 'Plano gris', 'grid']].map(([k, t, i]) => ['base:' + k, t, i, baseKey === k ? 'on' : '']), nombres = ['rotulos', rotulosOn ? 'Ocultar nombres sobre el corte' : 'Mostrar nombres sobre el corte', 'type'], captura = ['captura', 'Modo captura', 'camera'];
   const groups = S.mode === 'citizen'
-    ? [[base, nombres, captura, ['share', 'Compartir esta página', 'share']], [['agente', 'Acceso Policía Local', 'lock'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]]
-    : [[base, nombres, captura, ['ciud', 'Ver como ciudadano', 'eye']],
+    ? [B, [nombres, captura, ['share', 'Compartir esta página', 'share']], [['agente', 'Acceso Policía Local', 'lock'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]]
+    : [B, [nombres, captura, ['ciud', 'Ver como ciudadano', 'eye']],
       ...(store.can('cortes.ver') ? [[['print', 'Parte para imprimir', 'printer'], ['csv', 'Exportar a Excel', 'download'], ['gj', 'Copia de seguridad', 'download'], ...(store.can('cortes.importar') ? [['imp', 'Importar copia', 'upload']] : [])]] : []),
       [...(store.can('cortes.ver') ? [['net', 'Actualizar callejero', 'refresh']] : []), ...(store.isRemote() && store.can('copia') ? [['copia', 'Copia completa del servidor', 'download']] : []), ...(store.isRemote() ? [['clave', 'Cambiar contraseña', 'key']] : [])].filter(Boolean),
       [store.isRemote() ? ['salir', 'Cerrar sesión', 'out', 'red'] : ['wipe', 'Borrar todos los cortes', 'trash', 'red'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]].filter(g => g.length);
@@ -681,7 +714,7 @@ menu.onclick = ev => {
   const b = ev.target.closest('[data-m]'); if (!b) return; const k = b.dataset.m; menu.hidden = true;
 
   guard(async () => {
-    if (k === 'base') toggleBase();
+    if (k.startsWith('base:')) setBase(k.slice(5));
     else if (k === 'rotulos') { rotulosOn = !rotulosOn; lsSet('cortes.rotulos', rotulosOn ? '1' : '0'); renderMap(); }
     else if (k === 'captura') { document.body.classList.add('captura'); toast('Modo captura: toca la esquina o pulsa Esc para salir'); }
     else if (k === 'share') { const url = location.origin + location.pathname + '#/ciudadano'; if (navigator.share) navigator.share({ title: 'Cortes de calle · Don Benito', url }).catch(() => {}); else { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } }
@@ -733,7 +766,7 @@ $('#fileGeo').onchange = ev => guard(async () => {
     if (!segs || !segs.length) { skipped++; continue; }
     const p = f.properties || {};
     list.push({ id: isUuid(p.id) ? p.id : uid(), calle: String(p.calle || p.name || 'Sin nombre'), tramo: String(p.tramo || ''), tipo: TIPOS[p.tipo] ? p.tipo : 'total', motivo: String(p.motivo || 'Otro'),
-      organismo: String(p.organismo || ''), autoriza: String(p.autoriza || ''), autoriza_detalle: String(p.autoriza_detalle || ''), referencia: String(p.referencia || ''),
+      organismo: String(p.organismo || ''), color: /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : '', autoriza: String(p.autoriza || ''), autoriza_detalle: String(p.autoriza_detalle || ''), referencia: String(p.referencia || ''),
       inicio: dt(p.inicio) || toInput(new Date()), fin: dt(p.fin), desvio: String(p.desvio || ''), obs: String(p.obs || ''), publicado: p.publicado !== false, origen: p.origen || 'manual', segs });
   }
   await store.saveMany(list, { tipo: 'importacion', archivo: file.name, filas: fc.features.length }); await reload(); S.when = 'todos'; renderTop(); renderMap(); showScreen('list');
@@ -842,4 +875,5 @@ setInterval(() => {
   window.__appListo = true;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
+mapaListo = true;
 window.__cortes = { S, net, snap, route, map, store };

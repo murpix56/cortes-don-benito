@@ -375,3 +375,14 @@ body.captura .topbar,body.captura .panel,body.captura .ctop,body.captura .pshow,
 body.captura .main{flex-direction:column}
 body.captura .capx{display:flex;position:fixed;z-index:9000;top:calc(env(safe-area-inset-top) + 10px);right:10px;width:34px;height:34px;border-radius:50%;border:0;background:rgba(16,24,40,.55);color:#fff;font-size:15px;align-items:center;justify-content:center;cursor:pointer;opacity:.5;transition:opacity .2s}
 body.captura .capx:hover{opacity:1}
+
+/* ───── Color del trazo ───── */
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.swatches label{position:relative;display:block;margin:0}
+.swatches input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.swatches span{display:flex;width:42px;height:42px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #cfd4dc;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--mut);background:#fff}
+.swatches input:checked + span{box-shadow:0 0 0 3px var(--navy)}
+.menu button.on::after{content:"✓";margin-left:auto;color:var(--blue);font-weight:700}
+
+/* ───── Plano gris: nombres rotulados en azul, como en los carteles ───── */
+body[data-base=gris] .sl{color:#1d5fb5;text-transform:uppercase;font-weight:800;font-size:12px;letter-spacing:.02em;text-shadow:-1.5px -1.5px 0 #fff,1.5px -1.5px 0 #fff,-1.5px 1.5px 0 #fff,1.5px 1.5px 0 #fff,0 0 3px #fff,0 1px 3px rgba(0,0,0,.35)}
