@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js';
-import * as store from './store.js';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js';
-import * as imp from './importer.js';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261107b';
+import * as store from './store.js?v=20261107b';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261107b';
+import * as imp from './importer.js?v=20261107b';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -798,6 +798,7 @@ setInterval(() => {
 (async () => {
   await store.init();
   router();
+  window.__appListo = true;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
 window.__cortes = { S, net, snap, route, map, store };
