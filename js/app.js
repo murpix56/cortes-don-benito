@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108c';
-import * as store from './store.js?v=20261108c';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108c';
-import * as imp from './importer.js?v=20261108c';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108b';
+import * as store from './store.js?v=20261108b';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108b';
+import * as imp from './importer.js?v=20261108b';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -40,30 +40,6 @@ new ResizeObserver(() => map.invalidateSize()).observe(map.getContainer());
 
 const cortesLayer = L.featureGroup().addTo(map);
 const draftLayer = L.featureGroup().addTo(map);
-const labelsLayer = L.layerGroup().addTo(map);
-let rotulosOn = lsGet('cortes.rotulos', '1') !== '0';
-const rotulos = [];   // {marker, metros, ancho}
-/* Punto medio (por longitud) de un trazado y ángulo de la calle en pantalla, legible (entre -90° y 90°) */
-function puntoMedio(path) {
-  const tot = lengthM(path); let acum = 0;
-  for (let i = 1; i < path.length; i++) {
-    const d = lengthM([path[i - 1], path[i]]);
-    if (acum + d >= tot / 2) {
-      const t = d ? (tot / 2 - acum) / d : 0, a = path[i - 1], b = path[i];
-      const pa = map.project(L.latLng(a), 15), pb = map.project(L.latLng(b), 15);
-      let ang = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
-      if (ang > 90) ang -= 180; if (ang < -90) ang += 180;
-      return { pos: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], ang, metros: tot };
-    }
-    acum += d;
-  }
-  return { pos: path[0], ang: 0, metros: tot };
-}
-function actualizarRotulos() {
-  const mpp = 156543.03392 * Math.cos(CFG.center[0] * Math.PI / 180) / Math.pow(2, map.getZoom());   // metros por píxel
-  for (const r of rotulos) { const el = r.marker.getElement(); if (el) el.classList.toggle('hide', r.metros / mpp < r.ancho + 16); }
-}
-map.on('zoomend', actualizarRotulos);
 let netLayer = null, netLayerFor = null;
 const snapDot = L.circleMarker([0, 0], { radius: 7, color: '#1570ef', weight: 3, fillColor: '#fff', fillOpacity: 1, interactive: false });
 function showNetLayer() {
@@ -99,7 +75,7 @@ const colorOf = (c, e) => (e === 'fin' ? GREY : (TIPOS[c.tipo] || TIPOS.total).c
 
 /* ───────── Dibujo de cortes en el mapa ───────── */
 function renderMap() {
-  cortesLayer.clearLayers(); labelsLayer.clearLayers(); rotulos.length = 0;
+  cortesLayer.clearLayers();
   if (S.mode === 'landing') return;
   for (const c of (S.mode === 'citizen' ? S.cortes.filter(x => (estado(x, S.view) === 'act' && matchesFilters(x)) || x.id === S.sel) : shown())) {
     if (draft && draft.id === c.id) continue;
@@ -109,13 +85,7 @@ function renderMap() {
     L.polyline(c.segs, { color: col, weight: 8, opacity: unpub ? .55 : 1, dashArray: e === 'prog' ? '2 12' : unpub ? '10 8' : null, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(cortesLayer);
     casing.bindTooltip(`<i class="d" style="background:${col}"></i><span><b>${esc(c.calle)}</b>${c.tramo ? `<small>${esc(c.tramo)}</small>` : ''}${c.tipo !== 'total' ? `<small class="k">${esc((TIPOS[c.tipo] || {}).human)}</small>` : ''}${ladoTxt(c) ? `<small>${esc(ladoTxt(c))}</small>` : ''}<small class="w">${esc(cuando(c, S.view).principal)}</small>${unpub ? '<small>Sin publicar</small>' : ''}</span>`, { sticky: true, className: 'tt', direction: 'top', offset: [0, -6] });
     casing.on('click', ev => { if (draft) return; L.DomEvent.stopPropagation(ev); select(c.id, true); });
-    if (rotulosOn && c.segs.length) {
-      const path = c.segs.reduce((m, p) => (lengthM(p) > lengthM(m) ? p : m), c.segs[0]), pm = puntoMedio(path);
-      const mk = L.marker(pm.pos, { icon: L.divIcon({ className: 'sl-wrap', html: `<span class="sl" style="--r:${pm.ang.toFixed(1)}deg">${esc(c.calle)}</span>`, iconSize: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 500 }).addTo(labelsLayer);
-      rotulos.push({ marker: mk, metros: pm.metros, ancho: c.calle.length * 7.2 });
-    }
   }
-  actualizarRotulos();
 }
 const encuadrar = (puntos, maxZoom = 18) => map.fitBounds(L.latLngBounds(puntos), { maxZoom, paddingTopLeft: [30, S.mode === 'citizen' ? (innerWidth < 700 ? 150 : 90) : 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
 const fitCorte = c => encuadrar(c.segs.flat());
@@ -616,9 +586,7 @@ body.addEventListener('submit', ev => {
   const f = ev.target, b = f.querySelector('button'); b.disabled = true;
   guard(async () => { await store.createUser({ usuario: f.usuario.value.trim(), nombre: f.nombre.value.trim(), rol: f.rol.value, clave: f.clave.value }); toast('Usuario creado. Deberá cambiar la contraseña al entrar.'); showScreen('list'); }).finally(() => { b.disabled = false; });
 });
-$('#capx').onclick = () => document.body.classList.remove('captura');
 document.addEventListener('keydown', ev => {
-  if (ev.key === 'Escape' && document.body.classList.contains('captura')) { document.body.classList.remove('captura'); return; }
   if (!draft || /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
   if (ev.key === 'Escape') cancelDraw();
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && draft.stage === 'draw') { ev.preventDefault(); undoPoint(); }
@@ -662,16 +630,14 @@ const ICON = {
   info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
   home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
-  type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
-  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
 };
 const ic = k => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 function openMenu() {
-  const base = ['base', baseKey === 'osm' ? 'Vista satélite' : 'Vista plano', 'layers'], nombres = ['rotulos', rotulosOn ? 'Ocultar nombres sobre el corte' : 'Mostrar nombres sobre el corte', 'type'], captura = ['captura', 'Modo captura', 'camera'];
+  const base = ['base', baseKey === 'osm' ? 'Vista satélite' : 'Vista plano', 'layers'];
   const groups = S.mode === 'citizen'
-    ? [[base, nombres, captura, ['share', 'Compartir esta página', 'share']], [['agente', 'Acceso Policía Local', 'lock'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]]
-    : [[base, nombres, captura, ['ciud', 'Ver como ciudadano', 'eye']],
+    ? [[base, ['share', 'Compartir esta página', 'share']], [['agente', 'Acceso Policía Local', 'lock'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]]
+    : [[base, ['ciud', 'Ver como ciudadano', 'eye']],
       ...(store.can('cortes.ver') ? [[['print', 'Parte para imprimir', 'printer'], ['csv', 'Exportar a Excel', 'download'], ['gj', 'Copia de seguridad', 'download'], ...(store.can('cortes.importar') ? [['imp', 'Importar copia', 'upload']] : [])]] : []),
       [...(store.can('cortes.ver') ? [['net', 'Actualizar callejero', 'refresh']] : []), ...(store.isRemote() && store.can('copia') ? [['copia', 'Copia completa del servidor', 'download']] : []), ...(store.isRemote() ? [['clave', 'Cambiar contraseña', 'key']] : [])].filter(Boolean),
       [store.isRemote() ? ['salir', 'Cerrar sesión', 'out', 'red'] : ['wipe', 'Borrar todos los cortes', 'trash', 'red'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]].filter(g => g.length);
@@ -682,8 +648,6 @@ menu.onclick = ev => {
 
   guard(async () => {
     if (k === 'base') toggleBase();
-    else if (k === 'rotulos') { rotulosOn = !rotulosOn; lsSet('cortes.rotulos', rotulosOn ? '1' : '0'); renderMap(); }
-    else if (k === 'captura') { document.body.classList.add('captura'); toast('Modo captura: toca la esquina o pulsa Esc para salir'); }
     else if (k === 'share') { const url = location.origin + location.pathname + '#/ciudadano'; if (navigator.share) navigator.share({ title: 'Cortes de calle · Don Benito', url }).catch(() => {}); else { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } }
     else if (k === 'agente') location.hash = '#/agente';
     else if (k === 'ciud') location.hash = '#/ciudadano';

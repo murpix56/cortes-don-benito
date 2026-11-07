@@ -1,7 +1,7 @@
 /* Capa de datos. Dos modos, detectados solos al arrancar:
  *  - SERVIDOR: la aplicación se sirve desde servidor/server.mjs (API en «api/…»). Acceso con usuario y perfiles, datos compartidos.
  *  - LOCAL (demostración): sin servidor (p. ej. GitHub Pages). Datos solo en este dispositivo, sin usuarios. */
-import { lsGet, lsSet, isUuid, uid } from './util.js?v=20261108c';
+import { lsGet, lsSet, isUuid, uid } from './util.js?v=20261108b';
 
 let modo = 'local', yo = null;
 const LOC = 'cortes.v1', LOG = 'cortes.log.v1', PUBC = 'cortes.publico.cache';
