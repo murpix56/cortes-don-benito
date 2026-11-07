@@ -106,7 +106,7 @@ export function limpiarCorte(c) {
   };
   if (!UUID.test(String(c.id))) throw err(400, 'Identificador no válido');
   const o = { calle: txt('calle', 200, true), tramo: txt('tramo', 200), tipo: c.tipo, motivo: txt('motivo', 100), organismo: txt('organismo', 100),
-    autoriza: txt('autoriza', 100), autoriza_detalle: txt('autoriza_detalle', 200), referencia: txt('referencia', 100), firma: txt('firma', 60),
+    autoriza: txt('autoriza', 100), autoriza_detalle: txt('autoriza_detalle', 200), lado: ['pares', 'impares', 'ambos'].includes(c.lado) ? c.lado : '', referencia: txt('referencia', 100), firma: txt('firma', 60),
     inicio: c.inicio, fin: c.fin || '', desvio: txt('desvio', 1000), obs: txt('obs', 2000), origen: c.origen === 'importado' ? 'importado' : 'manual' };
   if (!TIPOS.includes(o.tipo)) throw err(400, 'Tipo de afección no válido');
   if (!FECHA.test(o.inicio || '')) throw err(400, 'Fecha de inicio no válida');
@@ -126,7 +126,7 @@ export function limpiarCorte(c) {
   });
   return { id: c.id, publicado, datos: o };
 }
-export const CAMPOS_DIFF = ['calle', 'tramo', 'tipo', 'motivo', 'organismo', 'autoriza', 'autoriza_detalle', 'referencia', 'inicio', 'fin', 'desvio', 'obs', 'firma'];
+export const CAMPOS_DIFF = ['calle', 'tramo', 'tipo', 'lado', 'motivo', 'organismo', 'autoriza', 'autoriza_detalle', 'referencia', 'inicio', 'fin', 'desvio', 'obs', 'firma'];
 export function diferencias(antes, despues) {
   const d = [];
   for (const k of CAMPOS_DIFF) if ((antes[k] || '') !== (despues[k] || '')) d.push(`${k}: «${String(antes[k] || '').slice(0, 40)}» → «${String(despues[k] || '').slice(0, 40)}»`);

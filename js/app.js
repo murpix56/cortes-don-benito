@@ -1,6 +1,6 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
-import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL,
+import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
   estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js';
 import * as store from './store.js';
 import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js';
@@ -77,17 +77,18 @@ const colorOf = (c, e) => (e === 'fin' ? GREY : (TIPOS[c.tipo] || TIPOS.total).c
 function renderMap() {
   cortesLayer.clearLayers();
   if (S.mode === 'landing') return;
-  for (const c of (S.mode === 'citizen' ? S.cortes.filter(x => estado(x, S.view) === 'act' || x.id === S.sel) : shown())) {
+  for (const c of (S.mode === 'citizen' ? S.cortes.filter(x => (estado(x, S.view) === 'act' && matchesFilters(x)) || x.id === S.sel) : shown())) {
     if (draft && draft.id === c.id) continue;
     const e = estado(c, S.view), col = colorOf(c, e), sel = c.id === S.sel, unpub = c.publicado === false;
     if (sel) L.polyline(c.segs, { color: col, weight: 22, opacity: .28, interactive: false, lineCap: 'round' }).addTo(cortesLayer);
     const casing = L.polyline(c.segs, { color: '#fff', weight: 15, opacity: .9, lineCap: 'round', lineJoin: 'round' }).addTo(cortesLayer);
     L.polyline(c.segs, { color: col, weight: 8, opacity: unpub ? .55 : 1, dashArray: e === 'prog' ? '2 12' : unpub ? '10 8' : null, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(cortesLayer);
-    casing.bindTooltip(`<b>${esc(c.calle)}</b><br>${esc(cuando(c, S.view).principal)}${unpub ? '<br><i>Sin publicar</i>' : ''}`, { sticky: true });
+    casing.bindTooltip(`<i class="d" style="background:${col}"></i><span><b>${esc(c.calle)}</b><small>${esc(cuando(c, S.view).principal)}${c.tipo !== 'total' ? ' · ' + esc(tipoTexto(c)) : ''}${unpub ? ' · sin publicar' : ''}</small></span>`, { sticky: true, className: 'tt', direction: 'top', offset: [0, -6] });
     casing.on('click', ev => { if (draft) return; L.DomEvent.stopPropagation(ev); select(c.id, true); });
   }
 }
-const fitCorte = c => map.fitBounds(L.latLngBounds(c.segs.flat()), { maxZoom: 18, paddingTopLeft: [30, 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
+const encuadrar = (puntos, maxZoom = 18) => map.fitBounds(L.latLngBounds(puntos), { maxZoom, paddingTopLeft: [30, S.mode === 'citizen' ? 80 : 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
+const fitCorte = c => encuadrar(c.segs.flat());
 
 /* ───────── Estado del callejero ───────── */
 function setNetChip(txt, cls) {
@@ -173,9 +174,30 @@ if (matchMedia('(hover:hover)').matches) {
   });
 }
 
+/* ───────── Desplegable propio: mismo diseño en toda la aplicación ───────── */
+const ddHTML = (id, name, value, options) => {
+  const cur = options.find(o => o[0] === value) || options[0];
+  return `<div class="dd" data-dd><input type="hidden" id="${id}" name="${name}" value="${esc(cur[0])}"><button type="button" class="ddb" aria-haspopup="listbox" aria-expanded="false"><span>${esc(cur[1])}</span><i class="chev">⌄</i></button>
+    <ul class="ddl" role="listbox" hidden>${options.map(([v, l]) => `<li role="option" data-v="${esc(v)}" class="${v === cur[0] ? 'on' : ''}">${esc(l)}</li>`).join('')}</ul></div>`;
+};
+document.addEventListener('click', ev => {
+  const dd = ev.target.closest('[data-dd]');
+  document.querySelectorAll('[data-dd] .ddl:not([hidden])').forEach(l => { if (!dd || l.parentElement !== dd) { l.hidden = true; l.parentElement.querySelector('.ddb').setAttribute('aria-expanded', 'false'); } });
+  if (!dd) return;
+  const li = ev.target.closest('.ddl li'), btn = dd.querySelector('.ddb'), lst = dd.querySelector('.ddl');
+  if (li) {
+    const inp = dd.querySelector('input'); inp.value = li.dataset.v; dd.querySelector('.ddb span').textContent = li.textContent;
+    dd.querySelectorAll('li').forEach(x => x.classList.toggle('on', x === li)); lst.hidden = true; btn.setAttribute('aria-expanded', 'false');
+    inp.dispatchEvent(new Event('change', { bubbles: true })); return;
+  }
+  if (ev.target.closest('.ddb')) { lst.hidden = !lst.hidden; btn.setAttribute('aria-expanded', String(!lst.hidden)); if (!lst.hidden) lst.scrollIntoView({ block: 'nearest' }); }
+});
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') document.querySelectorAll('[data-dd] .ddl:not([hidden])').forEach(l => { l.hidden = true; }); });
+
 /* ───────── Panel ───────── */
 const panel = $('#panel'), body = $('#panelBody');
 $('#grab').onclick = () => panel.classList.toggle('min');
+$('#ptoggle').onclick = () => document.body.classList.toggle('panel-off');
 function showScreen(s) {
   S.screen = s; panel.classList.remove('min');
   const v = { list: S.mode === 'citizen' ? viewCitizen : ({ cortes: viewAgent, import: viewImport, log: viewLog, users: viewUsers, system: viewSystem })[S.tab], detail: viewDetail, draw: viewDraw, form: viewForm }[s];
@@ -184,11 +206,10 @@ function showScreen(s) {
 const opts = (list, sel, blank) => (blank ? '<option value="">Seleccionar…</option>' : '') + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
 const COLOR_FIN = GREY;
 function rowHTML(c) {
-  const e = estado(c, S.view), w = cuando(c, S.view), ag = S.mode === 'agent', T = TIPOS[c.tipo] || TIPOS.total;
-  const sub = ag ? c.tramo : (c.tipo !== 'total' ? T.human : '');
-  const flags = ag ? `${c.publicado === false ? '<em class="flag bad">Sin publicar</em>' : ''}${c.tipo !== 'total' ? `<em class="flag">${esc(T.human)}</em>` : ''}` : '';
+  const e = estado(c, S.view), w = cuando(c, S.view), T = TIPOS[c.tipo] || TIPOS.total;
   return `<div class="row${e === 'fin' ? ' done' : ''}" data-act="open" data-id="${esc(c.id)}"><i class="bar" style="background:${colorOf(c, e)}"></i>
-    <div class="rb"><b>${esc(c.calle)}</b>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}<span>${esc(w.principal)}</span></div>${flags ? `<div class="flags">${flags}</div>` : ''}<i class="chev">›</i></div>`;
+    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(tipoTexto(c))}</span>` : ''}<span>${esc(w.principal)}</span></div>
+    ${c.publicado === false ? '<div class="flags"><em class="flag bad">Sin publicar</em></div>' : ''}<i class="chev">›</i></div>`;
 }
 const itemsHTML = () => {
   const l = shown();
@@ -204,19 +225,26 @@ const cortoHasta = (c, now) => {
 };
 function frowHTML(c) {
   const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog';
-  const sub = c.tramo || (c.tipo !== 'total' ? T.human : '');
-  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}${c.tramo && c.tipo !== 'total' ? `<span class="tp">${esc(T.human)}</span>` : ''}</div>
+  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(tipoTexto(c))}</span>` : ''}</div>
     <span class="when${prog ? ' prog' : ''}">${esc(cortoHasta(c, S.view))}</span></div>`;
 }
 function viewCitizen() {
-  const now = S.view, act = S.cortes.filter(c => estado(c, now) === 'act').sort(byUrgency);
-  const prox = S.cortes.filter(c => estado(c, now) === 'prog' && parse(c.inicio) < addDays(now, 7)).sort(byUrgency);
-  const n = act.length, open = S.listOpen !== false, hay = n + prox.length > 0;
+  const now = S.view, q = (S.q || '').trim();
+  const vivos = S.cortes.filter(c => estado(c, now) === 'act' && matchesFilters(c)).sort(byUrgency);
+  const cortes = vivos.filter(c => c.tipo !== 'estac'), estac = vivos.filter(c => c.tipo === 'estac');
+  const prox = S.cortes.filter(c => estado(c, now) === 'prog' && parse(c.inicio) < addDays(now, 7) && matchesFilters(c)).sort(byUrgency);
+  const n = cortes.length, total = vivos.length + prox.length, hay = total > 0, open = S.listOpen !== false || !!q;
+  const titulo = q ? (hay ? `${total} ${total === 1 ? 'resultado' : 'resultados'} para «${q}»` : `Sin cortes en «${q}»`)
+    : (n === 0 ? 'No hay cortes de calle ahora mismo' : n === 1 ? '1 corte activo' : n + ' cortes activos');
+  const extra = !q ? [estac.length ? `${estac.length} prohibido estacionar` : '', prox.length ? `${prox.length} ${prox.length === 1 ? 'previsto' : 'previstos'}` : ''].filter(Boolean).join(' · ') : '';
   body.innerHTML = `
     ${S.stale ? `<div class="warn">Sin conexión. Datos guardados a las ${horaCorta(new Date(S.stale))}.</div>` : ''}
-    <div class="fhead"><i class="live ${n ? 'on' : 'ok'}"></i><b>${n === 0 ? 'No hay cortes de calle ahora mismo' : n === 1 ? '1 corte activo' : n + ' cortes activos'}</b>${prox.length ? `<span class="prev">(${prox.length} ${prox.length === 1 ? 'previsto' : 'previstos'})</span>` : ''}
-      ${hay ? `<button class="tg" data-act="toggle">${open ? 'Ocultar' : 'Ver'} <i class="chev ${open ? '' : 'up'}">⌄</i></button>` : ''}</div>
-    ${open && hay ? `<div class="flist">${act.map(frowHTML).join('')}${prox.map(frowHTML).join('')}</div>` : ''}
+    <div class="fhead"><i class="live ${n || (q && hay) ? 'on' : 'ok'}"></i><div class="ft"><b>${esc(titulo)}</b>${extra ? `<small>${esc(extra)}</small>` : ''}</div>
+      ${hay && !q ? `<button class="tg" data-act="toggle">${open ? 'Ocultar' : 'Ver'} <i class="chev ${open ? 'up' : ''}">⌄</i></button>` : ''}</div>
+    ${q && !hay ? '<p class="okmsg">Tu calle no tiene ningún corte ni restricción activa ahora mismo.</p>' : ''}
+    ${open && hay ? `${cortes.length ? `<div class="flist">${cortes.map(frowHTML).join('')}</div>` : ''}
+      ${estac.length ? `<h3 class="sec"><i class="live" style="background:${TIPOS.estac.color}"></i>Prohibido estacionar</h3><div class="flist">${estac.map(frowHTML).join('')}</div>` : ''}
+      ${prox.length ? `<h3 class="sec">Próximamente</h3><div class="flist">${prox.map(frowHTML).join('')}</div>` : ''}` : ''}
     <p class="foot">Información orientativa. Respete la señalización y las indicaciones de los agentes.</p>`;
 }
 
@@ -230,16 +258,15 @@ function viewAgent() {
   const act = all.filter(c => estado(c, now) === 'act').length, prog = all.filter(c => estado(c, now) === 'prog').length, sinpub = all.filter(c => c.publicado === false).length;
   const fechaTxt = S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '') : 'Fecha';
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
-    <div class="period"><label class="selbox"><select id="periodo" aria-label="Qué cortes ver">
-        <option value="ahora"${S.when === 'ahora' ? ' selected' : ''}>Ahora mismo</option><option value="hoy"${S.when === 'hoy' ? ' selected' : ''}>Hoy</option><option value="manana"${S.when === 'manana' ? ' selected' : ''}>Mañana</option>
-        <option value="fecha"${S.when === 'fecha' ? ' selected' : ''}>${S.when === 'fecha' && S.fecha ? esc(fechaTxt) : 'Otra fecha…'}</option><option value="todos"${S.when === 'todos' ? ' selected' : ''}>Todos (incluye finalizados)</option></select></label>
+    <div class="period">${ddHTML('periodo', 'periodo', S.when, [['ahora', 'Ahora mismo'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['fecha', S.when === 'fecha' && S.fecha ? fechaTxt : 'Otra fecha…'], ['todos', 'Todos (incluye finalizados)']])}
       ${S.when === 'fecha' ? `<input type="date" id="fechaSel" class="datebox" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha">` : ''}</div>
     <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
+    <div class="legrow">${Object.values(TIPOS).map(t => `<span><s style="background:${t.color}"></s>${esc(t.human)}</span>`).join('')}<span><s class="dash"></s>Programado</span><span><s style="background:${GREY}"></s>Finalizado</span></div>
     <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
     <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
     <details class="more"><summary>Más filtros</summary><div class="filters">
-      <select id="ftipo" aria-label="Filtrar por tipo"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}"${S.ftipo === k ? ' selected' : ''}>${esc(v.human)}</option>`).join('')}</select>
-      <select id="faut" aria-label="Filtrar por quién autoriza"><option value="">Autoriza: todos</option>${AUTORIZA.map(a => `<option${S.faut === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div></details>
+      ${ddHTML('ftipo', 'ftipo', S.ftipo, [['', 'Todos los tipos'], ...Object.entries(TIPOS).map(([k, v]) => [k, v.human])])}
+      ${ddHTML('faut', 'faut', S.faut, [['', 'Autoriza: todos'], ...AUTORIZA.map(x => [x, x])])}</div></details>
     <div id="listItems" class="cards">${itemsHTML()}</div>`;
 }
 
@@ -253,7 +280,7 @@ function viewDetail() {
   const sec = w.secundario || (ag && e === 'act' && i ? 'Desde ' + fl(i) : '');
   body.innerHTML = `
     <div class="dtop"><button class="lnk" data-act="back">‹ Volver</button>${ag ? '<button class="lnk" data-act="fit">Ver en el mapa</button>' : '<button class="lnk" data-act="share">Compartir</button>'}</div>
-    <div class="dhead" style="background:${col}"><small>${esc(e === 'fin' ? 'Finalizado' : T.human)}</small><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}</div>
+    <div class="dhead" style="background:${col}"><small>${esc(e === 'fin' ? 'Finalizado' : tipoTexto(c))}</small><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}</div>
     ${ag && c.publicado === false ? '<div class="warn">Este corte <b>no es visible</b> para los ciudadanos.</div>' : ''}
     <p class="until2">${esc(w.principal)}</p>${sec ? `<p class="until2 sec">${esc(sec)}</p>` : ''}
     <div class="lns">${ln('Desvío', c.desvio)}${ln('Motivo', c.motivo)}${ln('Autoriza', [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</div>
@@ -300,7 +327,7 @@ function viewForm() {
   const b = draft.base || {}, calle = b.calle || nameSummary();
   const ini = b.inicio ? parse(b.inicio) : redondear5(new Date());
   const fin = b.fin ? parse(b.fin) : (b.inicio ? null : new Date(+ini + 2 * 36e5)), sinFin = !fin;
-  const aut = AUTORIZA.includes(b.autoriza) ? b.autoriza : '', tipo = b.tipo || 'total';
+  const aut = AUTORIZA.includes(b.autoriza) ? b.autoriza : '', tipo = TIPOS[b.tipo] ? b.tipo : 'total', lado = b.lado || (tipo === 'estac' ? 'ambos' : '');
   body.innerHTML = `
     <h2>${draft.id ? 'Editar corte' : 'Nuevo corte'}</h2>
     <p class="mut small">${fmtLen(totalLen(draft.segs.map(s => s.path)))} marcados en el mapa${draft.segs.length > 1 ? ` · ${draft.segs.length} tramos` : ''}</p>
@@ -308,8 +335,12 @@ function viewForm() {
       <label class="fl">Calle(s) *</label><input name="calle" required value="${esc(calle)}" placeholder="Ej.: Calle Grízar">
       <label class="fl">Tramo</label><input name="tramo" value="${esc(b.tramo || tramoSugerido())}" placeholder="Ej.: entre C/ Santa Marta y C/ Real">
       <label class="fl">Tipo de corte</label>
-      <div class="choices c2">${Object.entries(TIPOS).map(([k, v]) => `<label><input type="radio" name="tipo" value="${k}"${k === tipo ? ' checked' : ''}><span><i style="background:${v.color}"></i>${esc(v.human)}</span></label>`).join('')}</div>
-      <label class="fl">Motivo</label><select name="motivo">${opts(MOTIVOS, b.motivo)}</select>
+      <div class="choices c2 tipos">${Object.entries(TIPOS).map(([k, v]) => `<label><input type="radio" name="tipo" value="${k}"${k === tipo ? ' checked' : ''}><span><i style="background:${v.color}"></i>${esc(v.human)}</span></label>`).join('')}</div>
+      <div id="ladoBox"${tipo === 'total' ? ' hidden' : ''}>
+        <label class="fl" id="ladoLbl">${tipo === 'parcial' ? '¿Qué carril se corta? *' : '¿Qué lado?'}</label>
+        <div class="choices c3">${[['ambos', 'Ambos lados'], ['pares', 'Pares'], ['impares', 'Impares']].map(([k, l]) => `<label data-l="${k}"${k === 'ambos' && tipo === 'parcial' ? ' hidden' : ''}><input type="radio" name="lado" value="${k}"${k === lado ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <p class="mut small">Según la numeración de los portales de la calle.</p></div>
+      <label class="fl">Motivo</label>${ddHTML('motivo', 'motivo', b.motivo || MOTIVOS[0], [...new Set([...MOTIVOS, ...(b.motivo && !MOTIVOS.includes(b.motivo) ? [b.motivo] : [])])].map(m => [m, m]))}
       <label class="fl">Quién autoriza *</label>
       <div class="choices c2">${AUTORIZA.map(a => `<label><input type="radio" name="autoriza" value="${esc(a)}"${a === aut ? ' checked' : ''}><span>${esc(a)}</span></label>`).join('')}</div>
       <label class="fl">Cuándo</label>
@@ -331,6 +362,12 @@ function viewForm() {
   const juntar = (a, h) => (f[a].value && f[h].value ? new Date(f[a].value + 'T' + f[h].value) : null);
   f.onchange = ev => {
     const n = ev.target.name;
+    if (n === 'tipo') {
+      const t = ev.target.value, box = $('#ladoBox'); box.hidden = t === 'total';
+      box.querySelector('[data-l=ambos]').hidden = t === 'parcial'; $('#ladoLbl').textContent = t === 'parcial' ? '¿Qué carril se corta? *' : '¿Qué lado?';
+      const ck = f.querySelector('[name=lado]:checked');
+      if (t === 'parcial' && ck && ck.value === 'ambos') ck.checked = false; if (t === 'estac' && !f.querySelector('[name=lado]:checked')) f.querySelector('[name=lado][value=ambos]').checked = true;
+    }
     if (n === 'sinfin') { ['fin_f', 'fin_h'].forEach(k => { f[k].disabled = ev.target.checked; }); if (!ev.target.checked && !f.fin_f.value) { const d = new Date((juntar('ini_f', 'ini_h') || new Date()).getTime() + 36e5); f.fin_f.value = fechaInput(d); f.fin_h.value = horaInput(d); } }
     if ((n === 'ini_f' || n === 'ini_h') && !f.sinfin.checked) { const a = juntar('ini_f', 'ini_h'), z = juntar('fin_f', 'fin_h'); if (a && (!z || z < a)) { const d = new Date(+a + 36e5); f.fin_f.value = fechaInput(d); f.fin_h.value = horaInput(d); } }
   };
@@ -341,6 +378,7 @@ async function saveForm(fd) {
   v.calle = (v.calle || '').trim();
   if (!v.calle) return toast('Indica la calle afectada');
   if (!v.autoriza) return toast('Indica quién autoriza el corte');
+  if ((v.tipo || 'total') === 'parcial' && !v.lado) return toast('Indica qué carril se corta: números pares o impares');
   if (!v.ini_f || !v.ini_h) return toast('Indica cuándo empieza');
   const inicio = `${v.ini_f}T${v.ini_h}`;
   let fin = '';
@@ -350,7 +388,7 @@ async function saveForm(fd) {
     if (fin < inicio) return toast('El corte termina antes de empezar');
   }
   const data = {
-    calle: v.calle, tramo: (v.tramo || '').trim(), tipo: v.tipo || 'total', motivo: v.motivo, autoriza: v.autoriza, autoriza_detalle: (v.autoriza_detalle || '').trim(),
+    calle: v.calle, tramo: (v.tramo || '').trim(), tipo: v.tipo || 'total', lado: (v.tipo || 'total') === 'total' ? '' : (v.lado || ''), motivo: v.motivo, autoriza: v.autoriza, autoriza_detalle: (v.autoriza_detalle || '').trim(),
     referencia: (v.referencia || '').trim(), firma: (v.firma || '').trim(), inicio, fin, desvio: (v.desvio || '').trim(), obs: (v.obs || '').trim(), publicado: v.publicado === 'on',
     segs: draft.segs.map(s => s.path.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)])),
   };
@@ -371,7 +409,7 @@ function viewImport() {
   const I = S.imp;
   let h = `${ribbonHTML()}${tabsHTML()}<h2>Importar desde Excel / CSV</h2>`;
   if (!I || !I.table) {
-    h += `<p class="mut">Sube la exportación de Binfopol u otro listado en Excel (.xlsx) o CSV. La aplicación localiza cada corte en el mapa por el nombre de la calle y los cruces «desde / hasta». Los cortes importados <b>quedan sin publicar</b> hasta que los revises.</p>
+    h += `<p class="mut">Sube la exportación de VinfoPol u otro listado en Excel (.xlsx) o CSV. La aplicación localiza cada corte en el mapa por el nombre de la calle y los cruces «desde / hasta». Los cortes importados <b>quedan sin publicar</b> hasta que los revises.</p>
       <div class="btns"><button class="btn pri" data-act="imp-choose">Elegir archivo…</button><button class="btn" data-act="imp-template">Descargar plantilla</button></div>
       ${net.ready ? '' : '<div class="warn">El callejero no está cargado: sin él no se pueden localizar los cortes.</div>'}`;
   } else if (!I.items) {
@@ -407,7 +445,7 @@ async function viewLog() {
     <div class="btns" style="margin-top:0">${store.can('auditoria.integridad') ? '<button class="btn" data-act="aud-verify">✔ Verificar integridad</button>' : ''}<button class="btn" data-act="aud-csv">⬇ Exportar CSV</button></div>
     <div id="audVerify"></div>
     <div class="filters"><input id="audq" class="search" type="search" placeholder="Buscar usuario, calle o detalle…" value="${esc(f.q)}" autocomplete="off">
-      <select id="audacc" aria-label="Tipo de actividad">${FILTROS_ACC.map(([k, l]) => `<option value="${k}"${f.accion === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${ddHTML('audacc', 'audacc', f.accion, FILTROS_ACC)}</div>
     <div id="audList"><p class="mut">Cargando…</p></div>`;
   await pintarAuditoria();
 }
@@ -445,7 +483,7 @@ async function viewUsers() {
       <div class="mini"><button class="btn" data-act="usr-toggle" data-id="${u.id}" data-a="${u.activo ? 0 : 1}">${u.activo ? 'Desactivar' : 'Activar'}</button><button class="btn" data-act="usr-reset" data-id="${u.id}">Restablecer contraseña</button></div></div></div>`).join('')) +
     `<h3>Nuevo usuario</h3><form id="uf" autocomplete="off">
       <div class="two"><div><label>Usuario *</label><input name="usuario" required pattern="[A-Za-z0-9._\\-]{3,40}" autocapitalize="none" spellcheck="false"></div>
-      <div><label>Perfil *</label><select name="rol">${roles.map(r => `<option value="${r}">${ROLN[r]}</option>`).join('')}</select></div></div>
+      <div><label>Perfil *</label>${ddHTML('rol', 'rol', 'agente', roles.map(r => [r, ROLN[r]]))}</div></div>
       <label>Nombre completo *</label><input name="nombre" required maxlength="100">
       <label>Contraseña temporal * (mín. 10, letras y números)</label><input name="clave" type="text" required minlength="10" autocomplete="off">
       <p class="mut small">Se le pedirá cambiarla en su primer acceso. Se recomienda una cuenta personal por agente para que la auditoría identifique a quien actúa.</p>
@@ -468,7 +506,7 @@ async function viewSystem() {
 }
 
 /* ───────── Acciones ───────── */
-function select(id, fit) { S.sel = id; renderMap(); showScreen('detail'); if (fit) { const c = S.cortes.find(x => x.id === id); if (c) fitCorte(c); } }
+function select(id, fit) { document.body.classList.remove('panel-off'); S.sel = id; renderMap(); showScreen('detail'); if (fit) { const c = S.cortes.find(x => x.id === id); if (c) fitCorte(c); } }
 function cancelDraw() {
   const id = draft && draft.id; endDraw(); renderMap();
   if (id && S.cortes.some(c => c.id === id)) select(id); else { S.tab = draft && draft.fromImport ? 'import' : S.tab; showScreen('list'); }
@@ -569,35 +607,38 @@ function refreshAll() {
 function showScreenKeepScroll() { const y = body.scrollTop; showScreen('list'); body.scrollTop = y; }
 topbar.addEventListener('click', ev => { if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); } });
 
-/* Leyenda sobre el mapa (solo panel de agentes) */
-let legendCtl = null;
-function setLegend(on) {
-  if (on && !legendCtl) {
-    legendCtl = L.control({ position: 'bottomleft' });
-    legendCtl.onAdd = () => {
-      const d = L.DomUtil.create('div', 'maplegend' + (innerWidth < 900 ? ' min' : ''));
-      d.innerHTML = '<b>Leyenda <i>▾</i></b>' + Object.values(TIPOS).map(t => `<div><s style="background:${t.color}"></s>${esc(t.human)}</div>`).join('') + '<div><s class="dash"></s>Programado</div><div><s style="background:' + GREY + '"></s>Finalizado</div>';
-      L.DomEvent.disableClickPropagation(d); d.onclick = () => d.classList.toggle('min'); return d;
-    };
-    legendCtl.addTo(map);
-  } else if (!on && legendCtl) { legendCtl.remove(); legendCtl = null; }
-}
-
-/* ───────── Menú ───────── */
+/* ───────── Menú de ajustes ───────── */
 const menu = $('#menu');
+const ICON = {
+  layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+  out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2"/>',
+  info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+  home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+};
+const ic = k => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 function openMenu() {
-  const items = S.mode === 'citizen'
-    ? [['base', baseKey === 'osm' ? '🛰  Ver satélite' : '🗺  Ver plano'], ['share', '↗  Compartir esta página'], ['agente', '🔒  Acceso Policía Local'], ['inicio', '⌂  Inicio'], ['info', 'ℹ  Acerca de']]
-    : [['base', baseKey === 'osm' ? '🛰  Ver satélite (PNOA)' : '🗺  Ver plano de calles'], ['ciud', '👁  Ver como ciudadano'],
-      ...(store.can('cortes.ver') ? [['gj', '⬇  Exportar GeoJSON (copia de seguridad)'], ['csv', '⬇  Exportar a Excel (CSV)'], ['print', '🖨  Parte para imprimir / PDF'], ['net', '↻  Actualizar callejero']] : []),
-      ...(store.can('cortes.importar') ? [['imp', '⬆  Importar GeoJSON']] : []),
-      ...(store.isRemote() && store.can('copia') ? [['copia', '💾  Descargar copia completa (JSON)']] : []),
-      ...(store.isRemote() ? [['clave', '🔑  Cambiar contraseña'], ['salir', 'Cerrar sesión', 'red']] : [['wipe', 'Borrar todos los cortes', 'red']]), ['inicio', '⌂  Inicio'], ['info', 'ℹ  Acerca de']];
-  menu.innerHTML = items.map(([k, t, c]) => `<button data-m="${k}" class="${c || ''}">${t}</button>`).join(''); menu.hidden = !menu.hidden;
+  const base = ['base', baseKey === 'osm' ? 'Vista satélite' : 'Vista plano', 'layers'];
+  const groups = S.mode === 'citizen'
+    ? [[base, ['share', 'Compartir esta página', 'share']], [['agente', 'Acceso Policía Local', 'lock'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]]
+    : [[base, ['ciud', 'Ver como ciudadano', 'eye']],
+      ...(store.can('cortes.ver') ? [[['print', 'Parte para imprimir', 'printer'], ['csv', 'Exportar a Excel', 'download'], ['gj', 'Copia de seguridad', 'download'], ...(store.can('cortes.importar') ? [['imp', 'Importar copia', 'upload']] : [])]] : []),
+      [...(store.can('cortes.ver') ? [['net', 'Actualizar callejero', 'refresh']] : []), ...(store.isRemote() && store.can('copia') ? [['copia', 'Copia completa del servidor', 'download']] : []), ...(store.isRemote() ? [['clave', 'Cambiar contraseña', 'key']] : [])].filter(Boolean),
+      [store.isRemote() ? ['salir', 'Cerrar sesión', 'out', 'red'] : ['wipe', 'Borrar todos los cortes', 'trash', 'red'], ['inicio', 'Inicio', 'home'], ['info', 'Acerca de', 'info']]].filter(g => g.length);
+  menu.innerHTML = groups.map(g => `<div class="mg">${g.map(([k, t, i, c]) => `<button data-m="${k}" class="${c || ''}">${ic(i)}<span>${t}</span></button>`).join('')}</div>`).join(''); menu.hidden = !menu.hidden;
 }
 document.addEventListener('click', ev => { if (!menu.hidden && !menu.contains(ev.target)) menu.hidden = true; });
 menu.onclick = ev => {
-  const k = ev.target.dataset.m; if (!k) return; menu.hidden = true;
+  const b = ev.target.closest('[data-m]'); if (!b) return; const k = b.dataset.m; menu.hidden = true;
+
   guard(async () => {
     if (k === 'base') toggleBase();
     else if (k === 'share') { const url = location.origin + location.pathname + '#/ciudadano'; if (navigator.share) navigator.share({ title: 'Cortes de calle · Don Benito', url }).catch(() => {}); else { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } }
@@ -723,11 +764,16 @@ async function reload() {
 const primeraPestana = () => (TABS.find(t => tabOK(t[2])) || TABS[0])[0];
 async function enter(mode) {
   if (draft) endDraw();
-  setLegend(false);
   S.mode = mode; document.body.dataset.mode = mode; $('#landing').hidden = mode !== 'landing';
   if (mode === 'landing') { renderLanding(); renderMap(); return; }
+  const cs = $('#csearch'); cs.hidden = mode !== 'citizen'; cs.innerHTML = '';
+  if (mode === 'citizen') {
+    cs.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input id="cq" type="search" placeholder="¿Tu calle está cortada? Búscala aquí…" autocomplete="off" autocapitalize="none" aria-label="Buscar una calle">';
+    $('#cq').oninput = ev => { clearTimeout(S.cqT); S.cqT = setTimeout(() => { S.q = ev.target.value.trim(); S.sel = null; renderMap(); showScreen('list'); const l = S.cortes.filter(c => estado(c, S.view) !== 'fin' && matchesFilters(c)); if (S.q && l.length) encuadrar(l.flatMap(c => c.segs.flat()), 17); }, 200); };
+  }
+  $('#ptoggle').hidden = mode !== 'agent'; document.body.classList.remove('panel-off');
   S.sel = null; S.screen = 'list'; S.tab = mode === 'agent' ? primeraPestana() : 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.when = 'ahora'; S.fecha = null; S.listOpen = null; S.imp = null;
-  renderTop(); setLegend(mode === 'agent' && store.can('cortes.ver')); await reload();
+  renderTop(); await reload();
   if (mode === 'agent' && store.can('cortes.crear')) loadNet(false, setNetChip);
   renderMap(); showScreen('list'); setTimeout(() => map.invalidateSize(), 50);
 }

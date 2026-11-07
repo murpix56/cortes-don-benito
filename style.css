@@ -145,10 +145,6 @@ label.chk input{width:20px;height:20px;flex:none}
 .box label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:10px 0 4px}
 
 /* Menú y avisos */
-.menu{position:fixed;z-index:3000;right:10px;top:calc(env(safe-area-inset-top) + 56px);background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(16,24,40,.28);min-width:250px;overflow:hidden}
-.menu[hidden]{display:none}
-.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
-.menu button:last-child{border-bottom:0} .menu button:hover{background:var(--bg)} .menu .red{color:var(--red)}
 #toast{position:fixed;z-index:7000;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translate(-50%,20px);background:#101828;color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;max-width:90vw;opacity:0;pointer-events:none;transition:.2s;text-align:center}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .leaflet-container{font:inherit}
@@ -235,14 +231,7 @@ label.fl{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:16
 .fbar{position:sticky;bottom:0;display:flex;gap:8px;background:#fff;padding:12px 0 2px;margin-top:14px;border-top:1px solid var(--line)}
 .fbar .btn{flex:1} .fbar .btn.pri{flex:2}
 
-.maplegend{background:rgba(255,255,255,.96);border-radius:12px;padding:9px 12px;box-shadow:0 2px 10px rgba(16,24,40,.25);font-size:13px;cursor:pointer;margin-left:10px!important;margin-bottom:24px!important}
-.maplegend b{display:block;font-size:13px;margin-bottom:4px}
-.maplegend b i{font-style:normal;float:right;margin-left:14px}
-.maplegend div{display:flex;align-items:center;gap:8px;padding:2px 0}
-.maplegend s{display:inline-block;width:22px;height:6px;border-radius:3px;flex:none;text-decoration:none}
-.maplegend s.dash{background:repeating-linear-gradient(90deg,#667085 0 3px,transparent 3px 8px)}
-.maplegend.min div{display:none} .maplegend.min b{margin:0}
-
+.maplegend.min div{display:none} 
 /* ───── Ciudadano: tarjeta flotante sobre el mapa ───── */
 body[data-mode=citizen] .main{position:relative;flex-direction:column}
 body[data-mode=citizen] #map{position:absolute;inset:0;min-height:0}
@@ -279,6 +268,65 @@ body[data-mode=citizen] .pbody{padding:14px 14px 12px}
 
 /* ───── Selector de periodo (agentes) ───── */
 .period{margin:4px 0 10px;display:flex;flex-direction:column;gap:8px}
-.selbox select,.datebox{width:100%;min-height:46px;border:1px solid #cfd4dc;border-radius:12px;padding:0 40px 0 14px;font-size:16px;font-weight:600;color:var(--navy);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1.5l6 6 6-6' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center;-webkit-appearance:none;appearance:none}
 .datebox{background-image:none;padding:0 14px}
 .iconbtn svg{display:block;margin:auto}
+
+/* ───── Desplegable común ───── */
+.dd{position:relative}
+.ddb{width:100%;min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #cfd4dc;border-radius:12px;background:#fff;padding:0 14px;font-size:16px;font-weight:600;color:var(--navy);cursor:pointer;text-align:left}
+.ddb[aria-expanded=true]{border-color:var(--navy);box-shadow:0 0 0 3px rgba(15,42,74,.10)}
+.ddb .chev{font-size:18px;transition:transform .15s} .ddb[aria-expanded=true] .chev{transform:rotate(180deg)}
+.ddl{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;margin:0;padding:6px;list-style:none;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px rgba(16,24,40,.22);max-height:280px;overflow:auto}
+.ddl[hidden]{display:none}
+.ddl li{padding:11px 12px;border-radius:10px;font-size:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.ddl li:hover{background:var(--bg)}
+.ddl li.on{background:#eef3fa;color:var(--navy);font-weight:600}
+.ddl li.on::after{content:"✓";font-size:14px}
+.filters{display:flex;flex-direction:column;gap:8px;margin:8px 0}
+.map select{width:100%;min-height:44px;border:1px solid #cfd4dc;border-radius:12px;padding:0 14px;font-size:15px;font-weight:500;background:#fff}
+.legrow{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--mut);margin:0 2px 12px}
+.legrow s{display:inline-block;width:18px;height:5px;border-radius:3px;vertical-align:middle;margin-right:5px;text-decoration:none}
+.legrow s.dash{background:repeating-linear-gradient(90deg,#667085 0 3px,transparent 3px 8px)}
+.choices.c3{grid-template-columns:repeat(2,1fr)}
+#ladoBox .choices{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:1fr}
+.choices label[hidden]{display:none}
+
+/* ───── Ciudadano: buscador y secciones ───── */
+.csearch{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1001;width:min(560px,calc(100% - 24px));display:flex;align-items:center;gap:10px;background:#fff;border-radius:16px;padding:0 16px;box-shadow:0 6px 24px rgba(16,24,40,.22);color:var(--mut)}
+.csearch[hidden]{display:none}
+.csearch input{border:0;outline:0;flex:1;min-height:50px;font-size:16px;background:none;color:var(--ink);min-width:0}
+body[data-mode=citizen] .leaflet-top{margin-top:68px}
+h3.sec{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);margin:14px 2px 8px;padding:0;border:0}
+h3.sec .live{width:9px;height:9px;box-shadow:none}
+.okmsg{margin:2px 2px 10px;color:#067647;font-size:14px}
+
+/* ───── Panel ocultable (escritorio) ───── */
+.ptoggle{display:none}
+@media (min-width:900px){
+  body[data-mode=agent] .ptoggle:not([hidden]){display:flex;position:absolute;top:50%;left:430px;transform:translateY(-50%);z-index:1001;width:22px;height:64px;border:0;background:#fff;border-radius:0 12px 12px 0;box-shadow:2px 0 10px rgba(16,24,40,.22);align-items:center;justify-content:center;cursor:pointer;color:var(--mut);padding:0}
+  body.panel-off .ptoggle{left:0}
+  body.panel-off .ptoggle svg{transform:rotate(180deg)}
+  body.panel-off .panel{display:none}
+}
+
+/* ───── Rótulo sobre el corte ───── */
+.leaflet-tooltip.tt{display:flex;align-items:center;gap:9px;background:#101828;color:#fff;border:0;border-radius:12px;padding:8px 13px 8px 11px;box-shadow:0 10px 28px rgba(16,24,40,.38);font:inherit;white-space:nowrap}
+.leaflet-tooltip.tt::before{display:none!important}
+.tt .d{width:9px;height:9px;border-radius:50%;flex:none}
+.tt b{display:block;font-size:14px;line-height:1.2}
+.tt small{display:block;font-size:12px;opacity:.78;margin-top:1px}
+
+/* ───── Menú de ajustes ───── */
+.menu{position:fixed;z-index:3000;right:10px;top:calc(env(safe-area-inset-top) + 58px);background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(16,24,40,.26),0 0 0 1px rgba(16,24,40,.05);min-width:240px;padding:4px 6px;overflow:hidden}
+.menu[hidden]{display:none}
+.mg{padding:4px 0;border-top:1px solid var(--line)} .mg:first-child{border-top:0}
+.menu button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;padding:10px 10px;border-radius:10px;font-size:15px;color:var(--ink);cursor:pointer}
+.menu button svg{flex:none;color:var(--mut)}
+.menu button:hover,.menu button:active{background:var(--bg)}
+.menu button.red,.menu button.red svg{color:var(--red)}
+
+.fhead .ft{flex:1;min-width:0}
+.fhead .ft b{display:block;font-size:16px;line-height:1.25}
+.fhead .ft small{display:block;color:var(--mut);font-size:13px;margin-top:1px}
+.tipos label:last-child:nth-child(odd){grid-column:1/-1}
+.row .rb span.tp{font-size:12px;font-weight:700}

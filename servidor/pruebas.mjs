@@ -33,7 +33,7 @@ r = await a.f('GET', '/api/cortes'); t('tras cambiarla: accede', r.s === 200 && 
 console.log('\n[Agente: crear, importar, publicar, borrar]');
 r = await a.f('POST', '/api/cortes', { cortes: [corte(1)] }); t('crea corte publicado', r.s === 200, r.x);
 r = await a.f('POST', '/api/cortes', { cortes: [corte(2, { autoriza: '', publicado: true })] }); t('publicar sin "autoriza" → 400', r.s === 400, r.x);
-r = await a.f('POST', '/api/cortes', { cortes: [corte(3, { publicado: false, autoriza: '', origen: 'importado' })], lote: { tipo: 'importacion', archivo: 'binfopol.xlsx', filas: 5 } }); t('importación sin publicar (sin autoriza)', r.s === 200, r.x);
+r = await a.f('POST', '/api/cortes', { cortes: [corte(3, { publicado: false, autoriza: '', origen: 'importado' })], lote: { tipo: 'importacion', archivo: 'vinfopol.xlsx', filas: 5 } }); t('importación sin publicar (sin autoriza)', r.s === 200, r.x);
 for (const [n, mal] of [['tipo inválido', { tipo: 'xx' }], ['fechas invertidas', { fin: '2020-01-01T00:00' }], ['id no uuid', { id: 'abc' }], ['trazado vacío', { segs: [] }], ['coordenadas no numéricas', { segs: [[['a', 'b'], [1, 2]]] }], ['calle gigante', { calle: 'x'.repeat(500) }]]) { r = await a.f('POST', '/api/cortes', { cortes: [corte(9, mal)] }); t('rechaza ' + n, r.s === 400, r.x); }
 r = await a.f('POST', '/api/cortes', { cortes: [{ ...corte(1), calle: 'Calle Editada', _base: 'caducado' }] }); t('conflicto de edición simultánea → 409', r.s === 409, r.x);
 const lista = (await a.f('GET', '/api/cortes')).j; const c1 = lista.find(c => c.id === UU(1));
@@ -54,7 +54,7 @@ console.log('\n[Mando: auditoría, restauración, usuarios]');
 const m = new Cli(); await m.f('POST', '/api/login', { usuario: 'mando1', clave: 'Clave-Temporal-2026' }); await m.f('POST', '/api/yo/clave', { actual: 'Clave-Temporal-2026', nueva: 'Roble-Azul-2026' });
 r = await m.f('GET', '/api/auditoria'); const au = r.j; t('mando ve la auditoría', r.s === 200 && au.length > 5);
 const acc = new Set(au.map(x => x.accion)); t('registra: alta, edición, importación, borrado, login, fallo de login, cambio de clave', ['CORTE_ALTA', 'CORTE_EDICION', 'IMPORTACION', 'CORTE_BORRADO', 'LOGIN', 'LOGIN_FALLIDO', 'CLAVE_CAMBIO'].every(x => acc.has(x)), [...acc].join(','));
-const imp = au.find(x => x.accion === 'IMPORTACION'); t('la importación indica archivo, usuario y nº', /binfopol\.xlsx/.test(imp.detalle) && imp.usuario === 'agente1' && imp.ip, JSON.stringify(imp));
+const imp = au.find(x => x.accion === 'IMPORTACION'); t('la importación indica archivo, usuario y nº', /vinfopol\.xlsx/.test(imp.detalle) && imp.usuario === 'agente1' && imp.ip, JSON.stringify(imp));
 const ed = au.find(x => x.accion === 'CORTE_EDICION' && x.usuario === 'agente1'); t('la edición detalla qué cambió', /calle:.*Calle Editada/.test(ed.detalle) && /tipo:/.test(ed.detalle), ed.detalle);
 const bor = au.find(x => x.accion === 'CORTE_BORRADO'); t('el borrado indica quién (agente1) y es restaurable', bor.usuario === 'agente1' && bor.restaurable === true);
 r = await m.f('POST', `/api/cortes/${UU(4)}/restaurar`, {}); t('mando restaura el corte borrado', r.s === 200); t('…vuelve SIN publicar a la lista del agente', (await a.f('GET', '/api/cortes')).j.some(c => c.id === UU(4) && c.publicado === false));

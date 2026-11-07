@@ -16,10 +16,12 @@ export const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; 
 export const TIPOS = {
   total:   { label: 'Corte total',                 human: 'Calle cortada',                                  color: '#d92d20' },
   parcial: { label: 'Corte parcial / un carril',   human: 'Un solo carril',                                color: '#f79009' },
-  sentido: { label: 'Sentido único / restricción', human: 'Sentido único',                                color: '#1570ef' },
   estac:   { label: 'Prohibido estacionar',        human: 'Prohibido estacionar',                         color: '#7a5af8' },
 };
-export const MOTIVOS = ['Obra', 'Evento / procesión', 'Mercadillo / feria', 'Mantenimiento / servicio', 'Incidencia / emergencia', 'Otro'];
+export const MOTIVOS = ['Obra', 'Evento', 'Procesión', 'Mercadillo', 'Feria', 'Mantenimiento', 'Servicio', 'Incidencia', 'Emergencia', 'Otro'];
+export const LADOS = { pares: 'números pares', impares: 'números impares', ambos: 'ambos lados' };
+/* «Un solo carril · números pares» */
+export const tipoTexto = c => { const T = TIPOS[c.tipo] || TIPOS.total; return T.human + (c.tipo !== 'total' && c.lado && c.lado !== 'ambos' ? ' · ' + LADOS[c.lado] : ''); };
 export const SOLICITA = ['Policía Local', 'Ayuntamiento', 'Empresa de obras', 'Particular', 'Otro organismo'];
 export const AUTORIZA = ['Ayuntamiento', 'Policía Local'];
 export const GREY = '#98a2b3';

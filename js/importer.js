@@ -91,6 +91,7 @@ export const FIELDS = [
   { k: 'desde', label: 'Desde (calle de inicio)', syn: ['desde', 'tramo desde', 'cruce inicio', 'inicio tramo'] },
   { k: 'hasta', label: 'Hasta (calle final)', syn: ['hasta', 'tramo hasta', 'cruce fin', 'fin tramo'] },
   { k: 'tipo', label: 'Tipo de afección', syn: ['tipo', 'afeccion', 'tipo de corte', 'tipo corte'] },
+  { k: 'lado', label: 'Lado (pares / impares)', syn: ['lado', 'acera', 'paridad', 'numeros', 'pares impares'] },
   { k: 'motivo', label: 'Motivo', syn: ['motivo', 'causa', 'razon', 'evento', 'descripcion'] },
   { k: 'organismo', label: 'Solicita / origen', syn: ['solicita', 'solicitante', 'organismo', 'origen', 'peticionario', 'promotor', 'empresa'] },
   { k: 'autoriza', label: 'Autoriza', syn: ['autoriza', 'autorizado por', 'autoridad', 'autorizacion'] },
@@ -141,8 +142,7 @@ export function parseDT(v, t) {
 function tipoDe(s) {
   const k = normKey(s);
   if (!k) return 'total';
-  if (/parcial|carril/.test(k)) return 'parcial';
-  if (/sentido|unico|restric/.test(k)) return 'sentido';
+  if (/parcial|carril|sentido|unico|restric/.test(k)) return 'parcial';
   if (/estac|aparc/.test(k)) return 'estac';
   return TIPOS[k] ? k : 'total';
 }
@@ -162,6 +162,7 @@ export function buildItems(table, map) {
     if (fin && fin < inicio) warns.push('la fecha de fin es anterior al inicio');
     const corte = {
       calle: g('calle'), tramo: g('tramo') || (desde && hasta ? `entre ${desde} y ${hasta}` : ''), tipo: tipoDe(g('tipo')),
+      lado: /impar/i.test(g('lado')) ? 'impares' : /par/i.test(g('lado')) ? 'pares' : '',
       motivo: g('motivo') || 'Otro', organismo: g('organismo'), autoriza: g('autoriza'), autoriza_detalle: '', referencia: g('referencia'),
       inicio, fin, desvio: g('desvio'), obs: g('obs'), publicado: false, origen: 'importado',
     };
