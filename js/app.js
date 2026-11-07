@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108b';
-import * as store from './store.js?v=20261108b';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108b';
-import * as imp from './importer.js?v=20261108b';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108e';
+import * as store from './store.js?v=20261108e';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108e';
+import * as imp from './importer.js?v=20261108e';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,

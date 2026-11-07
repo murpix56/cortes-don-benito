@@ -1,5 +1,5 @@
 /* Callejero (OpenStreetMap vía Overpass), grafo, ajuste a calle, rutas y localización de tramos por nombre */
-import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108b';
+import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108e';
 
 export const CFG = {
   center: [38.9565, -5.8612], zoom: 15,
@@ -66,6 +66,7 @@ async function fetchOverpass() {
 let loading = null;
 /* Carga el callejero (caché local o descarga). status(texto, clase) informa del estado. */
 export function loadNet(force, status = () => {}) {
+  try { localStorage.removeItem('cortes.callejero.v2'); } catch { /* sin acceso */ }   // caché de una versión retirada
   if (loading && !force) return loading;
   loading = (async () => {
     if (!force) {
