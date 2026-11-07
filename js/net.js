@@ -1,5 +1,5 @@
 /* Callejero (OpenStreetMap vía Overpass), grafo, ajuste a calle, rutas y localización de tramos por nombre */
-import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108e';
+import { lsGet, lsSet, normName, lengthM } from './util.js?v=20261108f';
 
 export const CFG = {
   center: [38.9565, -5.8612], zoom: 15,

@@ -1,10 +1,10 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL, LADOS, tipoTexto,
-  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108e';
-import * as store from './store.js?v=20261108e';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108e';
-import * as imp from './importer.js?v=20261108e';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js?v=20261108f';
+import * as store from './store.js?v=20261108f';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js?v=20261108f';
+import * as imp from './importer.js?v=20261108f';
 
 const S = {
   mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
@@ -102,7 +102,9 @@ function newDraft(base) {
   return { id: (base && base.id) || null, base: base || null, mode: net.ready ? 'calles' : 'libre', stage: 'draw', fromImport: null,
     segs: base && base.segs ? base.segs.map(p => ({ path: p, names: [] })) : [], wps: [], legs: [] };
 }
-const curPath = () => draft.legs.flatMap((l, i) => (i === 0 ? l.path : l.path.slice(1)));
+/* Quita los rebotes: ir hasta un punto pasado el cruce y volver por el mismo sitio */
+function sinRebotes(p) { const o = []; for (const q of p) { const n = o.length; if (n >= 2 && o[n - 2][0] === q[0] && o[n - 2][1] === q[1]) o.pop(); else o.push(q); } return o; }
+const curPath = () => sinRebotes(draft.legs.flatMap((l, i) => (i === 0 ? l.path : l.path.slice(1))));
 const curNames = () => draft.legs.flatMap(l => l.names);
 function closeSegment() {
   const ok = draft.wps.length >= 2;
