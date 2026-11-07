@@ -173,14 +173,6 @@ label.chk input{width:20px;height:20px;flex:none}
 }
 
 /* ───── Rediseño: ciudadano y agentes ───── */
-.hero{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:1px solid var(--line);border-radius:18px;padding:12px 16px;background:#fff;cursor:pointer;margin:2px 0 10px}
-.hero:disabled{cursor:default}
-.hero.on{background:#fef3f2;border-color:#fecdca}
-.hero.ok{background:#ecfdf3;border-color:#abefc6}
-.hero .big{font-size:40px;font-weight:800;line-height:1;min-width:46px;text-align:center}
-.hero.on .big{color:var(--red)} .hero.ok .big{color:var(--green)}
-.hero .ht{flex:1;display:flex;flex-direction:column}
-.hero .ht b{font-size:17px} .hero .ht small{color:var(--mut);font-size:13px}
 .chev{font-style:normal;color:#98a2b3;font-size:22px;line-height:1;transition:transform .2s}
 .chev.up{transform:rotate(180deg)}
 .cards{display:flex;flex-direction:column;gap:8px}
@@ -197,10 +189,6 @@ label.chk input{width:20px;height:20px;flex:none}
 .flag.bad{background:#fee4e2;color:#b42318}
 h3.sec{border:0;padding:0;margin:16px 2px 8px}
 .foot{font-size:12px;color:var(--mut);margin:14px 2px 0}
-.pills{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin:2px 0 10px}
-.pills>*{flex:1;position:relative;text-align:center;border:0;background:none;border-radius:9px;padding:9px 2px;font-weight:600;font-size:14px;color:var(--mut);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pills .on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,24,40,.15)}
-.pills input[type=date]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
 .sumline{display:flex;gap:14px;font-size:13px;color:var(--mut);margin:4px 2px 10px}
 .sumline b{color:var(--ink)} .sumline .warnc,.sumline .warnc b{color:#b54708}
 .btn.big{width:100%;min-height:46px;font-size:16px;margin-bottom:10px}
@@ -220,11 +208,6 @@ details.more[open] summary{margin-bottom:6px}
 .until i{font-style:normal;font-size:26px}
 .until b{display:block;font-size:19px}
 .until small{color:var(--mut);font-size:14px}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
-.tile{background:var(--bg);border-radius:12px;padding:10px 12px;min-width:0}
-.tile.wide{grid-column:1/3}
-.tile small{display:block;color:var(--mut);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-.tile b{display:block;font-size:15px;font-weight:600;word-break:break-word}
 .acts{display:flex;gap:8px;margin:10px 0}
 .acts .btn{flex:1;min-height:46px}
 
@@ -259,3 +242,43 @@ label.fl{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:16
 .maplegend s{display:inline-block;width:22px;height:6px;border-radius:3px;flex:none;text-decoration:none}
 .maplegend s.dash{background:repeating-linear-gradient(90deg,#667085 0 3px,transparent 3px 8px)}
 .maplegend.min div{display:none} .maplegend.min b{margin:0}
+
+/* ───── Ciudadano: tarjeta flotante sobre el mapa ───── */
+body[data-mode=citizen] .main{position:relative;flex-direction:column}
+body[data-mode=citizen] #map{position:absolute;inset:0;min-height:0}
+body[data-mode=citizen] .panel{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 14px);order:0;width:min(600px,calc(100% - 20px));max-height:58%;border-radius:20px;background:rgba(255,255,255,.98);box-shadow:0 12px 40px rgba(16,24,40,.30),0 0 0 1px rgba(16,24,40,.04)}
+body[data-mode=citizen] .grab{display:none}
+body[data-mode=citizen] .pbody{padding:14px 14px 12px}
+.fhead{display:flex;align-items:center;gap:9px;padding:0 2px 10px}
+.fhead b{font-size:16px}
+.fhead .prev{color:var(--mut);font-size:14px}
+.fhead .tg{margin-left:auto;background:none;border:0;color:var(--blue);font-weight:600;font-size:15px;cursor:pointer;display:flex;align-items:center;gap:2px;padding:4px 0}
+.fhead .tg .chev{font-size:18px;color:var(--blue)}
+.live{width:11px;height:11px;border-radius:50%;flex:none}
+.live.on{background:var(--red);box-shadow:0 0 0 4px rgba(217,45,32,.18)}
+.live.ok{background:var(--green);box-shadow:0 0 0 4px rgba(18,183,106,.18)}
+.flist{display:flex;flex-direction:column;gap:6px}
+.frow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-radius:14px;background:#f7f8fa;cursor:pointer}
+.frow:active{background:#eceff3}
+.frow .fl2{min-width:0;display:flex;flex-direction:column}
+.frow .fl2 b{font-size:16px;line-height:1.25}
+.frow .fl2 span{font-size:14px;color:var(--mut);line-height:1.3}
+.frow .fl2 span.tp{font-size:12px;font-weight:600;color:#b54708}
+.frow .when{flex:none;font:600 13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--red);background:#fef0ee;border-radius:9px;padding:5px 9px;white-space:nowrap}
+.frow .when.prog{color:var(--mut);background:transparent;padding:5px 0}
+
+/* ───── Ficha: líneas sencillas ───── */
+.dtop{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 4px}
+.lnk{background:none;border:0;color:var(--blue);font-weight:600;font-size:15px;padding:6px 0;cursor:pointer}
+.until2{font-size:20px;font-weight:800;margin:12px 2px 0;line-height:1.25}
+.until2.sec{font-size:15px;font-weight:500;color:var(--mut);margin-top:2px}
+.lns{margin:10px 0}
+.ln{display:flex;gap:12px;padding:10px 2px;border-top:1px solid var(--line)}
+.ln span{width:84px;flex:none;color:var(--mut);font-size:14px}
+.ln b{flex:1;font-weight:600;font-size:15px;word-break:break-word}
+
+/* ───── Selector de periodo (agentes) ───── */
+.period{margin:4px 0 10px;display:flex;flex-direction:column;gap:8px}
+.selbox select,.datebox{width:100%;min-height:46px;border:1px solid #cfd4dc;border-radius:12px;padding:0 40px 0 14px;font-size:16px;font-weight:600;color:var(--navy);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1.5l6 6 6-6' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center;-webkit-appearance:none;appearance:none}
+.datebox{background-image:none;padding:0 14px}
+.iconbtn svg{display:block;margin:auto}

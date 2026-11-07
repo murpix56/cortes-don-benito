@@ -221,3 +221,11 @@ export function locateTramo(calle, desde, hasta) {
   }
   return { status: 'revisar', segs: streetSegments(setA), msg: 'Sin tramo (desde/hasta): se marca la calle completa' };
 }
+
+/* Nombre de la calle que cruza en el extremo de un corte (para proponer «Entre A y B») */
+export function crossNames(lat, lon) {
+  const s = snap(lat, lon, 60); if (!s) return '';
+  const propia = net.names[net.en[s.e]], k = s.t < 0.5 ? net.ea[s.e] : net.eb[s.e], cnt = new Map();
+  for (const [, , nm] of net.adj[k]) { const n = net.names[nm]; if (n && n !== propia) cnt.set(n, (cnt.get(n) || 0) + 1); }
+  return [...cnt.keys()][0] || '';
+}

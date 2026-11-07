@@ -3,7 +3,7 @@
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL,
   estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js';
 import * as store from './store.js';
-import { net, CFG, loadNet, snap, route, searchStreets, streetBounds } from './net.js';
+import { net, CFG, loadNet, snap, route, searchStreets, streetBounds, crossNames } from './net.js';
 import * as imp from './importer.js';
 
 const S = {
@@ -26,8 +26,9 @@ document.addEventListener('error', e => {
 }, true);
 
 /* ───────── Mapa ───────── */
-const map = L.map('map', { zoomControl: false }).setView(CFG.center, CFG.zoom);
+const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(CFG.center, CFG.zoom);
 L.control.zoom({ position: 'topright' }).addTo(map);
+L.control.attribution({ position: 'topleft', prefix: false }).addTo(map);   // arriba: la tarjeta flotante no debe taparla
 const bases = {
   osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }),
   sat: L.tileLayer('https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible&format=image/jpeg&tilematrix={z}&tilerow={y}&tilecol={x}', { maxZoom: 19, attribution: 'PNOA © <a href="https://www.ign.es">IGN</a>' }),
@@ -86,7 +87,7 @@ function renderMap() {
     casing.on('click', ev => { if (draft) return; L.DomEvent.stopPropagation(ev); select(c.id, true); });
   }
 }
-const fitCorte = c => map.fitBounds(L.latLngBounds(c.segs.flat()), { maxZoom: 18, padding: [30, 30] });
+const fitCorte = c => map.fitBounds(L.latLngBounds(c.segs.flat()), { maxZoom: 18, paddingTopLeft: [30, 30], paddingBottomRight: [30, 30 + (S.mode === 'citizen' ? panel.offsetHeight : 0)] });
 
 /* ───────── Estado del callejero ───────── */
 function setNetChip(txt, cls) {
@@ -195,18 +196,27 @@ const itemsHTML = () => {
 };
 function refreshItems() { const el = $('#listItems'); if (el) el.innerHTML = itemsHTML(); }
 
-/* — Vista ciudadana: un titular y un desplegable — */
+/* — Vista ciudadana: tarjeta flotante sobre el mapa — */
+const cortoHasta = (c, now) => {
+  const e = estado(c, now), i = parse(c.inicio), f = parse(c.fin), dia = d => { const t = diaTxt(d, now); return t === 'hoy' ? '' : t + ' '; };
+  if (e === 'prog') return `Desde ${dia(i)}${horaCorta(i)} h`;
+  return f ? `Hasta ${dia(f)}${horaCorta(f)} h` : 'Sin hora de fin';
+};
+function frowHTML(c) {
+  const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog';
+  const sub = c.tramo || (c.tipo !== 'total' ? T.human : '');
+  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}${c.tramo && c.tipo !== 'total' ? `<span class="tp">${esc(T.human)}</span>` : ''}</div>
+    <span class="when${prog ? ' prog' : ''}">${esc(cortoHasta(c, S.view))}</span></div>`;
+}
 function viewCitizen() {
   const now = S.view, act = S.cortes.filter(c => estado(c, now) === 'act').sort(byUrgency);
   const prox = S.cortes.filter(c => estado(c, now) === 'prog' && parse(c.inicio) < addDays(now, 7)).sort(byUrgency);
-  const n = act.length, open = S.listOpen === null ? innerWidth >= 900 : S.listOpen, hayLista = n + prox.length > 0;
+  const n = act.length, open = S.listOpen !== false, hay = n + prox.length > 0;
   body.innerHTML = `
     ${S.stale ? `<div class="warn">Sin conexión. Datos guardados a las ${horaCorta(new Date(S.stale))}.</div>` : ''}
-    <button class="hero ${n ? 'on' : 'ok'}" data-act="toggle" aria-expanded="${open}" ${hayLista ? '' : 'disabled'}>
-      <span class="big">${n ? n : '✓'}</span>
-      <span class="ht"><b>${n === 0 ? 'Sin cortes de calle' : n === 1 ? 'Corte de calle activo' : 'Cortes de calle activos'}</b><small>${n ? 'Toca para ver cuáles' : 'No hay cortes ahora mismo'}</small></span>
-      ${hayLista ? `<i class="chev ${open ? 'up' : ''}">⌄</i>` : ''}</button>
-    ${open && hayLista ? `<div class="cards">${act.map(rowHTML).join('')}</div>${prox.length ? `<h3 class="sec">Próximamente</h3><div class="cards">${prox.map(rowHTML).join('')}</div>` : ''}` : ''}
+    <div class="fhead"><i class="live ${n ? 'on' : 'ok'}"></i><b>${n === 0 ? 'No hay cortes de calle ahora mismo' : n === 1 ? '1 corte activo' : n + ' cortes activos'}</b>${prox.length ? `<span class="prev">(${prox.length} ${prox.length === 1 ? 'previsto' : 'previstos'})</span>` : ''}
+      ${hay ? `<button class="tg" data-act="toggle">${open ? 'Ocultar' : 'Ver'} <i class="chev ${open ? '' : 'up'}">⌄</i></button>` : ''}</div>
+    ${open && hay ? `<div class="flist">${act.map(frowHTML).join('')}${prox.map(frowHTML).join('')}</div>` : ''}
     <p class="foot">Información orientativa. Respete la señalización y las indicaciones de los agentes.</p>`;
 }
 
@@ -220,11 +230,10 @@ function viewAgent() {
   const act = all.filter(c => estado(c, now) === 'act').length, prog = all.filter(c => estado(c, now) === 'prog').length, sinpub = all.filter(c => c.publicado === false).length;
   const fechaTxt = S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '') : 'Fecha';
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
-    <div class="pills" role="group" aria-label="Periodo">
-      ${[['ahora', 'Ahora'], ['hoy', 'Hoy'], ['manana', 'Mañana']].map(([k, l]) => `<button data-act="when" data-w="${k}" class="${S.when === k ? 'on' : ''}">${l}</button>`).join('')}
-      <label class="${S.when === 'fecha' ? 'on' : ''}">📅 ${esc(fechaTxt)}<input type="date" id="fechaSel" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha"></label>
-      <button data-act="when" data-w="todos" class="${S.when === 'todos' ? 'on' : ''}">Todos</button>
-    </div>
+    <div class="period"><label class="selbox"><select id="periodo" aria-label="Qué cortes ver">
+        <option value="ahora"${S.when === 'ahora' ? ' selected' : ''}>Ahora mismo</option><option value="hoy"${S.when === 'hoy' ? ' selected' : ''}>Hoy</option><option value="manana"${S.when === 'manana' ? ' selected' : ''}>Mañana</option>
+        <option value="fecha"${S.when === 'fecha' ? ' selected' : ''}>${S.when === 'fecha' && S.fecha ? esc(fechaTxt) : 'Otra fecha…'}</option><option value="todos"${S.when === 'todos' ? ' selected' : ''}>Todos (incluye finalizados)</option></select></label>
+      ${S.when === 'fecha' ? `<input type="date" id="fechaSel" class="datebox" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha">` : ''}</div>
     <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
     <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
     <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
@@ -240,15 +249,15 @@ function viewDetail() {
   if (!c) return showScreen('list');
   const ag = S.mode === 'agent', e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, col = colorOf(c, e), w = cuando(c, S.view);
   const i = parse(c.inicio), f = parse(c.fin), fl = d => `${diaTxt(d, S.view)} ${horaCorta(d)}`;
-  const tile = (k, v, wide) => (v ? `<div class="tile${wide ? ' wide' : ''}"><small>${k}</small><b>${esc(v).replace(/\n/g, '<br>')}</b></div>` : '');
+  const ln = (k, v) => (v ? `<div class="ln"><span>${k}</span><b>${esc(v).replace(/\n/g, '<br>')}</b></div>` : '');
+  const sec = w.secundario || (ag && e === 'act' && i ? 'Desde ' + fl(i) : '');
   body.innerHTML = `
-    <div class="btns top"><button class="btn" data-act="back">‹ Volver</button><button class="btn" data-act="fit">Ver en el mapa</button>${ag ? '' : '<button class="btn" data-act="share">Compartir</button>'}</div>
+    <div class="dtop"><button class="lnk" data-act="back">‹ Volver</button>${ag ? '<button class="lnk" data-act="fit">Ver en el mapa</button>' : '<button class="lnk" data-act="share">Compartir</button>'}</div>
     <div class="dhead" style="background:${col}"><small>${esc(e === 'fin' ? 'Finalizado' : T.human)}</small><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}</div>
     ${ag && c.publicado === false ? '<div class="warn">Este corte <b>no es visible</b> para los ciudadanos.</div>' : ''}
-    <div class="until"><i>🕒</i><div><b>${esc(w.principal)}</b>${(w.secundario || (ag && e === 'act' && i)) ? `<small>${esc(w.secundario || 'Desde ' + fl(i))}</small>` : ''}</div></div>
-    ${c.desvio ? `<div class="desvio"><b>Desvío</b>${esc(c.desvio).replace(/\n/g, '<br>')}</div>` : ''}
-    <div class="tiles">${tile('Motivo', c.motivo)}${tile('Autoriza', [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</div>
-    ${ag ? `<details class="more"><summary>Datos internos</summary><div class="tiles">${tile('Referencia', c.referencia)}${tile('Agente que registra', c.firma)}${tile('Notas', c.obs, true)}${tile('Longitud', fmtLen(totalLen(c.segs)) + (c.segs.length > 1 ? ` · ${c.segs.length} tramos` : ''))}${tile('Visible al público', c.publicado === false ? 'No' : 'Sí')}${tile('Origen', c.origen === 'importado' ? 'Importado de archivo' : 'Manual')}${tile('Creado por', c.creado_por)}${tile('Última modificación', c.modificado ? new Date(c.modificado).toLocaleString('es-ES') + (c.modificado_por ? ' · ' + c.modificado_por : '') : '', true)}</div></details>
+    <p class="until2">${esc(w.principal)}</p>${sec ? `<p class="until2 sec">${esc(sec)}</p>` : ''}
+    <div class="lns">${ln('Desvío', c.desvio)}${ln('Motivo', c.motivo)}${ln('Autoriza', [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</div>
+    ${ag ? `<details class="more"><summary>Datos internos</summary><div class="lns">${ln('Referencia', c.referencia)}${ln('Agente', c.firma)}${ln('Notas', c.obs)}${ln('Longitud', fmtLen(totalLen(c.segs)) + (c.segs.length > 1 ? ` · ${c.segs.length} tramos` : ''))}${ln('Público', c.publicado === false ? 'No visible' : 'Visible')}${ln('Origen', c.origen === 'importado' ? 'Importado de archivo' : 'Manual')}${ln('Creado por', c.creado_por)}${ln('Modificado', c.modificado ? new Date(c.modificado).toLocaleString('es-ES') + (c.modificado_por ? ' · ' + c.modificado_por : '') : '')}</div></details>
     <div class="acts">${store.can('cortes.editar') ? '<button class="btn pri" data-act="edit">Editar</button>' : ''}${store.can('cortes.publicar') ? `<button class="btn" data-act="pub">${c.publicado === false ? 'Publicar' : 'Retirar de lo público'}</button>` : ''}</div>
     <details class="more"><summary>Más acciones</summary><div class="btns">${store.can('cortes.editar') ? '<button class="btn" data-act="redraw">Redibujar trazado</button>' : ''}${store.can('cortes.crear') ? '<button class="btn" data-act="dup">Duplicar</button>' : ''}${store.can('cortes.borrar') ? '<button class="btn dng" data-act="del">Eliminar</button>' : ''}</div></details>` : ''}`;
 }
@@ -280,6 +289,12 @@ function viewDraw() {
 }
 
 /* — Formulario — */
+function tramoSugerido() {
+  if (!net.ready || !draft.segs.length) return '';
+  const p0 = draft.segs[0].path[0], ult = draft.segs[draft.segs.length - 1].path, p1 = ult[ult.length - 1];
+  const A = crossNames(p0[0], p0[1]), B = crossNames(p1[0], p1[1]);
+  return A && B && A !== B ? `Entre ${A} y ${B}` : '';
+}
 const redondear5 = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), Math.floor(d.getMinutes() / 5) * 5);
 function viewForm() {
   const b = draft.base || {}, calle = b.calle || nameSummary();
@@ -291,7 +306,7 @@ function viewForm() {
     <p class="mut small">${fmtLen(totalLen(draft.segs.map(s => s.path)))} marcados en el mapa${draft.segs.length > 1 ? ` · ${draft.segs.length} tramos` : ''}</p>
     <form id="f" autocomplete="off">
       <label class="fl">Calle(s) *</label><input name="calle" required value="${esc(calle)}" placeholder="Ej.: Calle Grízar">
-      <label class="fl">Tramo</label><input name="tramo" value="${esc(b.tramo || '')}" placeholder="Ej.: entre C/ Santa Marta y C/ Real">
+      <label class="fl">Tramo</label><input name="tramo" value="${esc(b.tramo || tramoSugerido())}" placeholder="Ej.: entre C/ Santa Marta y C/ Real">
       <label class="fl">Tipo de corte</label>
       <div class="choices c2">${Object.entries(TIPOS).map(([k, v]) => `<label><input type="radio" name="tipo" value="${k}"${k === tipo ? ' checked' : ''}><span><i style="background:${v.color}"></i>${esc(v.human)}</span></label>`).join('')}</div>
       <label class="fl">Motivo</label><select name="motivo">${opts(MOTIVOS, b.motivo)}</select>
@@ -465,7 +480,7 @@ body.addEventListener('click', ev => {
   const act = t.dataset.act, c = S.cortes.find(x => x.id === (t.dataset.id || S.sel)), I = S.imp;
   guard(async () => {
     switch (act) {
-      case 'toggle': S.listOpen = !(S.listOpen === null ? innerWidth >= 900 : S.listOpen); showScreen('list'); break;
+      case 'toggle': S.listOpen = !(S.listOpen !== false); showScreen('list'); break;
       case 'when': S.when = t.dataset.w; S.sel = null; renderMap(); showScreen('list'); break;
       case 'tab': S.tab = t.dataset.t; showScreen('list'); break;
       case 'aud-verify': { const r = await store.verifyAudit(); $('#audVerify').innerHTML = r.ok ? `<div class="hint">✔ Cadena íntegra: ${r.total} registros sin alteraciones.<br><small>Sello del último registro: ${esc(r.ultimo_hash.slice(0, 20))}…</small></div>` : `<div class="warn"><b>✘ ALERTA:</b> el registro nº ${r.fallo_en} ha sido alterado o falta alguno anterior. Avisa a Informática y conserva una copia de la base de datos.</div>`; break; }
@@ -517,6 +532,7 @@ body.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'ftipo') { S.ftipo = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'audacc') { S.auditF.accion = t.value; pintarAuditoria(); }
+  else if (t.id === 'periodo') { S.when = t.value; if (S.when === 'fecha' && !S.fecha) S.fecha = fechaInput(new Date()); S.sel = null; renderMap(); showScreen('list'); }
   else if (t.id === 'fechaSel') { if (t.value) { S.when = 'fecha'; S.fecha = t.value; S.sel = null; renderMap(); showScreen('list'); } }
   else if (t.id === 'faut') { S.faut = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'stq') { const b = streetBounds(t.value); if (b) map.fitBounds(b, { padding: [30, 30], maxZoom: 18 }); }
@@ -539,10 +555,10 @@ const topbar = $('#topbar');
 function renderTop() {
   topbar.className = 'topbar ' + S.mode;
   if (S.mode === 'citizen') {
-    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>`;
+    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
   } else if (S.mode === 'agent') {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Panel de cortes</b><span>Policía Local · ${esc(store.userName())}</span></div>
-      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>`;
+      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
   }
 }
 function refreshAll() {
