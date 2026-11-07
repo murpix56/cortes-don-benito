@@ -197,18 +197,19 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') document.q
 /* ───────── Panel ───────── */
 const panel = $('#panel'), body = $('#panelBody');
 $('#grab').onclick = () => panel.classList.toggle('min');
-$('#ptoggle').onclick = () => document.body.classList.toggle('panel-off');
+$('#pshow').onclick = () => document.body.classList.remove('panel-off');
 function showScreen(s) {
   S.screen = s; panel.classList.remove('min');
   const v = { list: S.mode === 'citizen' ? viewCitizen : ({ cortes: viewAgent, import: viewImport, log: viewLog, users: viewUsers, system: viewSystem })[S.tab], detail: viewDetail, draw: viewDraw, form: viewForm }[s];
   v(); body.scrollTop = 0;
 }
 const opts = (list, sel, blank) => (blank ? '<option value="">Seleccionar…</option>' : '') + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
-const COLOR_FIN = GREY;
+const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+const ladoTxt = c => (c.tipo !== 'total' && c.lado && c.lado !== 'ambos' ? cap(LADOS[c.lado]) : '');
 function rowHTML(c) {
-  const e = estado(c, S.view), w = cuando(c, S.view), T = TIPOS[c.tipo] || TIPOS.total;
+  const e = estado(c, S.view), w = cuando(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, ld = ladoTxt(c);
   return `<div class="row${e === 'fin' ? ' done' : ''}" data-act="open" data-id="${esc(c.id)}"><i class="bar" style="background:${colorOf(c, e)}"></i>
-    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(tipoTexto(c))}</span>` : ''}<span>${esc(w.principal)}</span></div>
+    <div class="rb"><b>${esc(c.calle)}</b>${c.tramo ? `<span class="sub">${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span class="sub">${esc(ld)}</span>` : ''}<span class="un">${esc(w.principal)}</span></div>
     ${c.publicado === false ? '<div class="flags"><em class="flag bad">Sin publicar</em></div>' : ''}<i class="chev">›</i></div>`;
 }
 const itemsHTML = () => {
@@ -224,8 +225,8 @@ const cortoHasta = (c, now) => {
   return f ? `Hasta ${dia(f)}${horaCorta(f)} h` : 'Sin hora de fin';
 };
 function frowHTML(c) {
-  const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog';
-  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(tipoTexto(c))}</span>` : ''}</div>
+  const e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, prog = e === 'prog', ld = ladoTxt(c);
+  return `<div class="frow" data-act="open" data-id="${esc(c.id)}"><div class="fl2"><b>${esc(c.calle)}</b>${c.tramo ? `<span>${esc(c.tramo)}</span>` : ''}${c.tipo !== 'total' ? `<span class="tp" style="color:${T.color}">${esc(T.human)}</span>` : ''}${ld ? `<span>${esc(ld)}</span>` : ''}</div>
     <span class="when${prog ? ' prog' : ''}">${esc(cortoHasta(c, S.view))}</span></div>`;
 }
 function viewCitizen() {
@@ -233,7 +234,7 @@ function viewCitizen() {
   const vivos = S.cortes.filter(c => estado(c, now) === 'act' && matchesFilters(c)).sort(byUrgency);
   const cortes = vivos.filter(c => c.tipo !== 'estac'), estac = vivos.filter(c => c.tipo === 'estac');
   const prox = S.cortes.filter(c => estado(c, now) === 'prog' && parse(c.inicio) < addDays(now, 7) && matchesFilters(c)).sort(byUrgency);
-  const n = cortes.length, total = vivos.length + prox.length, hay = total > 0, open = S.listOpen !== false || !!q;
+  const n = cortes.length, total = vivos.length + prox.length, hay = total > 0, open = S.listOpen === true || !!q;
   const titulo = q ? (hay ? `${total} ${total === 1 ? 'resultado' : 'resultados'} para «${q}»` : `Sin cortes en «${q}»`)
     : (n === 0 ? 'No hay cortes de calle ahora mismo' : n === 1 ? '1 corte activo' : n + ' cortes activos');
   const extra = !q ? [estac.length ? `${estac.length} prohibido estacionar` : '', prox.length ? `${prox.length} ${prox.length === 1 ? 'previsto' : 'previstos'}` : ''].filter(Boolean).join(' · ') : '';
@@ -261,13 +262,13 @@ function viewAgent() {
     <div class="period">${ddHTML('periodo', 'periodo', S.when, [['ahora', 'Ahora mismo'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['fecha', S.when === 'fecha' && S.fecha ? fechaTxt : 'Otra fecha…'], ['todos', 'Todos (incluye finalizados)']])}
       ${S.when === 'fecha' ? `<input type="date" id="fechaSel" class="datebox" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha">` : ''}</div>
     <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
-    <div class="legrow">${Object.values(TIPOS).map(t => `<span><s style="background:${t.color}"></s>${esc(t.human)}</span>`).join('')}<span><s class="dash"></s>Programado</span><span><s style="background:${GREY}"></s>Finalizado</span></div>
-    <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
+        <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
     <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
     <details class="more"><summary>Más filtros</summary><div class="filters">
       ${ddHTML('ftipo', 'ftipo', S.ftipo, [['', 'Todos los tipos'], ...Object.entries(TIPOS).map(([k, v]) => [k, v.human])])}
       ${ddHTML('faut', 'faut', S.faut, [['', 'Autoriza: todos'], ...AUTORIZA.map(x => [x, x])])}</div></details>
-    <div id="listItems" class="cards">${itemsHTML()}</div>`;
+    <div id="listItems" class="cards">${itemsHTML()}</div>
+    <div class="legrow"><b>Leyenda</b>${Object.values(TIPOS).map(t => `<span><s style="background:${t.color}"></s>${esc(t.human)}</span>`).join('')}<span><s class="dash"></s>Programado</span><span><s style="background:${GREY}"></s>Finalizado</span></div>`;
 }
 
 /* — Ficha — */
@@ -280,7 +281,7 @@ function viewDetail() {
   const sec = w.secundario || (ag && e === 'act' && i ? 'Desde ' + fl(i) : '');
   body.innerHTML = `
     <div class="dtop"><button class="lnk" data-act="back">‹ Volver</button>${ag ? '<button class="lnk" data-act="fit">Ver en el mapa</button>' : '<button class="lnk" data-act="share">Compartir</button>'}</div>
-    <div class="dhead" style="background:${col}"><small>${esc(e === 'fin' ? 'Finalizado' : tipoTexto(c))}</small><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}</div>
+    <div class="dhead" style="background:${col}"><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}<div class="dtype"><b>${esc(e === 'fin' ? 'Finalizado' : T.human)}</b>${ladoTxt(c) ? `<span>${esc(ladoTxt(c))}</span>` : ''}</div></div>
     ${ag && c.publicado === false ? '<div class="warn">Este corte <b>no es visible</b> para los ciudadanos.</div>' : ''}
     <p class="until2">${esc(w.principal)}</p>${sec ? `<p class="until2 sec">${esc(sec)}</p>` : ''}
     <div class="lns">${ln('Desvío', c.desvio)}${ln('Motivo', c.motivo)}${ln('Autoriza', [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</div>
@@ -518,7 +519,7 @@ body.addEventListener('click', ev => {
   const act = t.dataset.act, c = S.cortes.find(x => x.id === (t.dataset.id || S.sel)), I = S.imp;
   guard(async () => {
     switch (act) {
-      case 'toggle': S.listOpen = !(S.listOpen !== false); showScreen('list'); break;
+      case 'toggle': S.listOpen = !(S.listOpen === true); showScreen('list'); break;
       case 'when': S.when = t.dataset.w; S.sel = null; renderMap(); showScreen('list'); break;
       case 'tab': S.tab = t.dataset.t; showScreen('list'); break;
       case 'aud-verify': { const r = await store.verifyAudit(); $('#audVerify').innerHTML = r.ok ? `<div class="hint">✔ Cadena íntegra: ${r.total} registros sin alteraciones.<br><small>Sello del último registro: ${esc(r.ultimo_hash.slice(0, 20))}…</small></div>` : `<div class="warn"><b>✘ ALERTA:</b> el registro nº ${r.fallo_en} ha sido alterado o falta alguno anterior. Avisa a Informática y conserva una copia de la base de datos.</div>`; break; }
@@ -596,7 +597,7 @@ function renderTop() {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
   } else if (S.mode === 'agent') {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Panel de cortes</b><span>Policía Local · ${esc(store.userName())}</span></div>
-      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
+      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnPanel" class="iconbtn" aria-label="Mostrar u ocultar el panel" title="Mostrar u ocultar el panel"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button><button id="btnMenu" class="iconbtn" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>`;
   }
 }
 function refreshAll() {
@@ -605,7 +606,10 @@ function refreshAll() {
   else if (S.screen === 'list' && !(document.activeElement && ['q', 'ftipo', 'faut'].includes(document.activeElement.id)) && (S.mode === 'citizen' || S.tab === 'cortes')) showScreenKeepScroll();
 }
 function showScreenKeepScroll() { const y = body.scrollTop; showScreen('list'); body.scrollTop = y; }
-topbar.addEventListener('click', ev => { if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); } });
+topbar.addEventListener('click', ev => {
+  if (ev.target.closest('#btnPanel')) { if (innerWidth >= 900) document.body.classList.toggle('panel-off'); else panel.classList.toggle('min'); return; }
+  if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); }
+});
 
 /* ───────── Menú de ajustes ───────── */
 const menu = $('#menu');
@@ -771,7 +775,7 @@ async function enter(mode) {
     cs.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input id="cq" type="search" placeholder="¿Tu calle está cortada? Búscala aquí…" autocomplete="off" autocapitalize="none" aria-label="Buscar una calle">';
     $('#cq').oninput = ev => { clearTimeout(S.cqT); S.cqT = setTimeout(() => { S.q = ev.target.value.trim(); S.sel = null; renderMap(); showScreen('list'); const l = S.cortes.filter(c => estado(c, S.view) !== 'fin' && matchesFilters(c)); if (S.q && l.length) encuadrar(l.flatMap(c => c.segs.flat()), 17); }, 200); };
   }
-  $('#ptoggle').hidden = mode !== 'agent'; document.body.classList.remove('panel-off');
+  $('#pshow').hidden = mode !== 'agent'; document.body.classList.remove('panel-off');
   S.sel = null; S.screen = 'list'; S.tab = mode === 'agent' ? primeraPestana() : 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.when = 'ahora'; S.fecha = null; S.listOpen = null; S.imp = null;
   renderTop(); await reload();
   if (mode === 'agent' && store.can('cortes.crear')) loadNet(false, setNetChip);
