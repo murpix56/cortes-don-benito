@@ -14,14 +14,14 @@ export const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; 
 
 /* ───────── Catálogos ───────── */
 export const TIPOS = {
-  total:   { label: 'Corte total',                 human: 'Calle cortada al tráfico',                       color: '#d92d20' },
-  parcial: { label: 'Corte parcial / un carril',   human: 'Circulación restringida (puede quedar un carril)', color: '#f79009' },
-  sentido: { label: 'Sentido único / restricción', human: 'Cambio de sentido o restricción de circulación',  color: '#1570ef' },
-  estac:   { label: 'Prohibido estacionar',        human: 'Prohibido estacionar en este tramo',              color: '#7a5af8' },
+  total:   { label: 'Corte total',                 human: 'Calle cortada',                                  color: '#d92d20' },
+  parcial: { label: 'Corte parcial / un carril',   human: 'Un solo carril',                                color: '#f79009' },
+  sentido: { label: 'Sentido único / restricción', human: 'Sentido único',                                color: '#1570ef' },
+  estac:   { label: 'Prohibido estacionar',        human: 'Prohibido estacionar',                         color: '#7a5af8' },
 };
 export const MOTIVOS = ['Obra', 'Evento / procesión', 'Mercadillo / feria', 'Mantenimiento / servicio', 'Incidencia / emergencia', 'Otro'];
 export const SOLICITA = ['Policía Local', 'Ayuntamiento', 'Empresa de obras', 'Particular', 'Otro organismo'];
-export const AUTORIZA = ['Ayuntamiento', 'Policía Local', 'Junta de Extremadura', 'Diputación de Badajoz', 'Otro organismo'];
+export const AUTORIZA = ['Ayuntamiento', 'Policía Local'];
 export const GREY = '#98a2b3';
 export const ESTADO_LBL = { act: 'Activo', prog: 'Programado', fin: 'Finalizado' };
 
@@ -50,6 +50,17 @@ export function estado(c, t) {
   return 'act';
 }
 export const esLarga = c => { const i = parse(c.inicio), f = parse(c.fin); return !f || (f - i) >= 7 * 864e5; };
+export const horaCorta = d => `${d.getHours()}:${pad(d.getMinutes())}`;
+const _dia = (d, ref) => { const t = diaTxt(d, ref); return ['hoy', 'mañana', 'ayer'].includes(t) ? t : 'el ' + t; };
+/* Texto corto y claro de «hasta cuándo»: {principal, secundario} */
+export function cuando(c, ref) {
+  const i = parse(c.inicio), f = parse(c.fin), e = estado(c, ref), at = d => `${_dia(d, ref)} a las ${horaCorta(d)}`;
+  if (e === 'prog') return { principal: `Desde ${at(i)}`, secundario: f ? `Hasta ${at(f)}` : 'Sin fecha de fin' };
+  if (e === 'fin') return { principal: `Terminó ${at(f)}`, secundario: '' };
+  return { principal: f ? `Hasta ${at(f)}` : 'Sin fecha de fin', secundario: '' };
+}
+export const fechaInput = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const horaInput = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 export function durText(c, ref) {
   const i = parse(c.inicio), f = parse(c.fin), e = estado(c, ref);
   if (!f) return `Desde ${fmtDT(i, ref)} · sin fecha de fin prevista`;

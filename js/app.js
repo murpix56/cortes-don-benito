@@ -1,14 +1,14 @@
 /* Cortes de calle · Policía Local de Don Benito
  * Vista ciudadana (solo lectura) + panel de agentes (alta, edición, importación, historial). */
 import { $, esc, pad, uid, isUuid, toInput, parse, startOfDay, addDays, lsGet, lsSet, TIPOS, MOTIVOS, SOLICITA, AUTORIZA, GREY, ESTADO_LBL,
-  estado, esLarga, durText, shortText, diaTxt, hora, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js';
+  estado, esLarga, durText, shortText, diaTxt, hora, horaCorta, cuando, fechaInput, horaInput, fmtDT, span, totalLen, lengthM, fmtLen, normKey, toast } from './util.js';
 import * as store from './store.js';
 import { net, CFG, loadNet, snap, route, searchStreets, streetBounds } from './net.js';
 import * as imp from './importer.js';
 
 const S = {
-  mode: null, cortes: [], view: new Date(), live: true, scope: 'instante',
-  sel: null, screen: 'list', tab: 'cortes', ctab: 'ahora', q: '', ftipo: '', faut: '',
+  mode: null, cortes: [], view: new Date(), when: 'ahora', fecha: null, listOpen: null,
+  sel: null, screen: 'list', tab: 'cortes', q: '', ftipo: '', faut: '',
   imp: null, log: null, stale: null, netChip: { txt: '', cls: '' },
 };
 let draft = null;
@@ -52,16 +52,11 @@ const hideNetLayer = () => { if (netLayer) map.removeLayer(netLayer); };
 const overlap = (c, d0, d1) => { const i = parse(c.inicio), f = parse(c.fin); return (!i || i < d1) && (!f || f >= d0); };
 function visible(c) {
   const t = S.view;
-  if (S.mode === 'citizen') {
-    const e = estado(c, t);
-    if (S.ctab === 'ahora') return e === 'act';
-    if (S.ctab === 'obras') return esLarga(c) && e !== 'fin';
-    const d0 = addDays(startOfDay(t), S.ctab === 'manana' ? 1 : 0);
-    return overlap(c, d0, addDays(d0, 1));
-  }
-  if (S.scope === 'todos') return true;
-  if (S.scope === 'instante') return estado(c, t) === 'act';
-  const d0 = startOfDay(t); return overlap(c, d0, addDays(d0, 1));
+  if (S.mode === 'citizen') return estado(c, t) === 'act';
+  if (S.when === 'todos') return true;
+  if (S.when === 'ahora') return estado(c, t) === 'act';
+  const d0 = S.when === 'hoy' ? startOfDay(t) : S.when === 'manana' ? addDays(startOfDay(t), 1) : startOfDay(parse((S.fecha || fechaInput(t)) + 'T00:00'));
+  return overlap(c, d0, addDays(d0, 1));
 }
 function matchesFilters(c) {
   if (S.q) { const q = normKey(S.q); if (!normKey(`${c.calle} ${c.tramo} ${c.motivo}`).includes(q)) return false; }
@@ -81,13 +76,13 @@ const colorOf = (c, e) => (e === 'fin' ? GREY : (TIPOS[c.tipo] || TIPOS.total).c
 function renderMap() {
   cortesLayer.clearLayers();
   if (S.mode === 'landing') return;
-  for (const c of shown()) {
+  for (const c of (S.mode === 'citizen' ? S.cortes.filter(x => estado(x, S.view) === 'act' || x.id === S.sel) : shown())) {
     if (draft && draft.id === c.id) continue;
     const e = estado(c, S.view), col = colorOf(c, e), sel = c.id === S.sel, unpub = c.publicado === false;
     if (sel) L.polyline(c.segs, { color: col, weight: 22, opacity: .28, interactive: false, lineCap: 'round' }).addTo(cortesLayer);
     const casing = L.polyline(c.segs, { color: '#fff', weight: 15, opacity: .9, lineCap: 'round', lineJoin: 'round' }).addTo(cortesLayer);
     L.polyline(c.segs, { color: col, weight: 8, opacity: unpub ? .55 : 1, dashArray: e === 'prog' ? '2 12' : unpub ? '10 8' : null, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(cortesLayer);
-    casing.bindTooltip(`<b>${esc(c.calle)}</b><br>${esc((TIPOS[c.tipo] || {}).human || '')}<br>${esc(shortText(c, S.view))}${unpub ? '<br><i>Sin publicar</i>' : ''}`, { sticky: true });
+    casing.bindTooltip(`<b>${esc(c.calle)}</b><br>${esc(cuando(c, S.view).principal)}${unpub ? '<br><i>Sin publicar</i>' : ''}`, { sticky: true });
     casing.on('click', ev => { if (draft) return; L.DomEvent.stopPropagation(ev); select(c.id, true); });
   }
 }
@@ -186,88 +181,76 @@ function showScreen(s) {
   v(); body.scrollTop = 0;
 }
 const opts = (list, sel, blank) => (blank ? '<option value="">Seleccionar…</option>' : '') + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
-const legendHTML = () => '<div class="legend">' + Object.values(TIPOS).map(t => `<span><i style="background:${t.color}"></i>${esc(t.label)}</span>`).join('') +
-  `<span><i style="background:${GREY}"></i>Finalizado</span><span><i style="background:repeating-linear-gradient(90deg,#667085 0 3px,transparent 3px 8px)"></i>Programado</span></div>`;
-
-function itemHTML(c) {
-  const e = estado(c, S.view), unpub = c.publicado === false;
-  return `<div class="item" data-act="open" data-id="${esc(c.id)}"><span class="dot" style="background:${colorOf(c, e)}"></span><div class="ib">
-    <div class="t">${esc(c.calle)}</div>${c.tramo ? `<div class="s">${esc(c.tramo)}</div>` : ''}
-    <div class="bs"><span class="badge ${e}">${ESTADO_LBL[e]}</span>${esLarga(c) ? '<span class="badge long">Larga duración</span>' : ''}${unpub ? '<span class="badge draft">Sin publicar</span>' : ''}<span class="badge tipo">${esc(S.mode === 'citizen' ? (TIPOS[c.tipo] || {}).human : (TIPOS[c.tipo] || {}).label)}</span></div>
-    <div class="s">${esc(shortText(c, S.view))}</div></div></div>`;
+const COLOR_FIN = GREY;
+function rowHTML(c) {
+  const e = estado(c, S.view), w = cuando(c, S.view), ag = S.mode === 'agent', T = TIPOS[c.tipo] || TIPOS.total;
+  const sub = ag ? c.tramo : (c.tipo !== 'total' ? T.human : '');
+  const flags = ag ? `${c.publicado === false ? '<em class="flag bad">Sin publicar</em>' : ''}${c.tipo !== 'total' ? `<em class="flag">${esc(T.human)}</em>` : ''}` : '';
+  return `<div class="row${e === 'fin' ? ' done' : ''}" data-act="open" data-id="${esc(c.id)}"><i class="bar" style="background:${colorOf(c, e)}"></i>
+    <div class="rb"><b>${esc(c.calle)}</b>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}<span>${esc(w.principal)}</span></div>${flags ? `<div class="flags">${flags}</div>` : ''}<i class="chev">›</i></div>`;
 }
 const itemsHTML = () => {
   const l = shown();
-  if (!l.length) return `<p class="empty">${S.q ? 'No hay resultados para esa búsqueda.' : S.mode === 'citizen' ? 'No hay cortes de calle en este periodo.' : 'No hay cortes para el momento seleccionado. Cambia el filtro o pulsa «Nuevo corte».'}</p>`;
-  return l.map(itemHTML).join('');
+  return l.length ? l.map(rowHTML).join('') : `<p class="empty">${S.q ? 'No hay resultados para esa búsqueda.' : 'No hay cortes en este periodo.'}</p>`;
 };
-function refreshItems() { const el = $('#listItems'); if (el) el.innerHTML = itemsHTML(); const h = $('#count'); if (h) h.textContent = shown().length; }
+function refreshItems() { const el = $('#listItems'); if (el) el.innerHTML = itemsHTML(); }
 
-/* — Vista ciudadana — */
+/* — Vista ciudadana: un titular y un desplegable — */
 function viewCitizen() {
-  const act = S.cortes.filter(c => estado(c, S.view) === 'act').length;
-  const tabs = [['ahora', 'Ahora'], ['hoy', 'Hoy'], ['manana', 'Mañana'], ['obras', 'Obras largas']];
+  const now = S.view, act = S.cortes.filter(c => estado(c, now) === 'act').sort(byUrgency);
+  const prox = S.cortes.filter(c => estado(c, now) === 'prog' && parse(c.inicio) < addDays(now, 7)).sort(byUrgency);
+  const n = act.length, open = S.listOpen === null ? innerWidth >= 900 : S.listOpen, hayLista = n + prox.length > 0;
   body.innerHTML = `
-    ${S.stale ? `<div class="warn">Sin conexión. Datos guardados a las ${hora(new Date(S.stale))}.</div>` : ''}
-    <div class="hero ${act ? 'on' : ''}"><div class="big">${act}</div><div><b>${act === 1 ? 'corte de calle activo' : 'cortes de calle activos'}</b><span>${act ? 'ahora mismo en Don Benito' : 'No hay cortes de calle activos ahora mismo'}</span></div></div>
-    <div class="seg4">${tabs.map(([k, l]) => `<button data-act="ctab" data-t="${k}" class="${S.ctab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-    <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
-    <div id="listItems">${itemsHTML()}</div>
-    ${legendHTML()}
-    <p class="mut small">Información orientativa. Respete siempre la señalización y las indicaciones de los agentes.</p>`;
+    ${S.stale ? `<div class="warn">Sin conexión. Datos guardados a las ${horaCorta(new Date(S.stale))}.</div>` : ''}
+    <button class="hero ${n ? 'on' : 'ok'}" data-act="toggle" aria-expanded="${open}" ${hayLista ? '' : 'disabled'}>
+      <span class="big">${n ? n : '✓'}</span>
+      <span class="ht"><b>${n === 0 ? 'Sin cortes de calle' : n === 1 ? 'Corte de calle activo' : 'Cortes de calle activos'}</b><small>${n ? 'Toca para ver cuáles' : 'No hay cortes ahora mismo'}</small></span>
+      ${hayLista ? `<i class="chev ${open ? 'up' : ''}">⌄</i>` : ''}</button>
+    ${open && hayLista ? `<div class="cards">${act.map(rowHTML).join('')}</div>${prox.length ? `<h3 class="sec">Próximamente</h3><div class="cards">${prox.map(rowHTML).join('')}</div>` : ''}` : ''}
+    <p class="foot">Información orientativa. Respete la señalización y las indicaciones de los agentes.</p>`;
 }
 
 /* — Panel de agentes — */
 const TABS = [['cortes', 'Cortes', 'cortes.ver'], ['import', 'Importar', 'cortes.importar'], ['log', 'Auditoría', 'auditoria.ver'], ['users', 'Usuarios', ['usuarios.todos', 'usuarios.agentes']], ['system', 'Sistema', 'sistema']];
 const tabOK = p => (Array.isArray(p) ? p.some(x => store.can(x)) : store.can(p));
 const tabsHTML = () => `<div class="tabs">${TABS.filter(t => tabOK(t[2])).map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-const ribbonHTML = () => (store.isRemote() ? '' : '<div class="ribbon">Modo de pruebas: los datos están solo en este dispositivo. Para compartirlos con otros agentes y con los ciudadanos hay que conectar el servidor (ver servidor/LEEME.md).</div>');
+const ribbonHTML = () => (store.isRemote() ? '' : '<div class="ribbon">Modo de pruebas: los datos se guardan solo en este dispositivo.</div>');
 function viewAgent() {
   const now = S.view, all = S.cortes;
-  const act = all.filter(c => estado(c, now) === 'act'), prog = all.filter(c => estado(c, now) === 'prog');
+  const act = all.filter(c => estado(c, now) === 'act').length, prog = all.filter(c => estado(c, now) === 'prog').length, sinpub = all.filter(c => c.publicado === false).length;
+  const fechaTxt = S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '') : 'Fecha';
   body.innerHTML = `${ribbonHTML()}${tabsHTML()}
-    <div class="btns">${store.can('cortes.crear') ? '<button class="btn pri" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn" data-act="print">🖨 Parte (PDF)</button></div>
-    <div class="stats">
-      <div class="stat"><b>${act.length}</b><span>Activos ahora</span></div>
-      <div class="stat"><b>${prog.length}</b><span>Programados</span></div>
-      <div class="stat"><b>${act.filter(esLarga).length}</b><span>Larga duración</span></div>
-      <div class="stat ${all.some(c => c.publicado === false) ? 'warnc' : ''}"><b>${all.filter(c => c.publicado === false).length}</b><span>Sin publicar</span></div>
+    <div class="pills" role="group" aria-label="Periodo">
+      ${[['ahora', 'Ahora'], ['hoy', 'Hoy'], ['manana', 'Mañana']].map(([k, l]) => `<button data-act="when" data-w="${k}" class="${S.when === k ? 'on' : ''}">${l}</button>`).join('')}
+      <label class="${S.when === 'fecha' ? 'on' : ''}">📅 ${esc(fechaTxt)}<input type="date" id="fechaSel" value="${esc(S.fecha || '')}" aria-label="Elegir una fecha"></label>
+      <button data-act="when" data-w="todos" class="${S.when === 'todos' ? 'on' : ''}">Todos</button>
     </div>
-    <div class="filters">
-      <input id="q" class="search" type="search" placeholder="Buscar calle, tramo o motivo…" value="${esc(S.q)}" autocomplete="off">
-      <select id="ftipo" aria-label="Filtrar por tipo"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}"${S.ftipo === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select>
-      <select id="faut" aria-label="Filtrar por quién autoriza"><option value="">Autoriza: todos</option>${AUTORIZA.map(a => `<option${S.faut === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-    </div>
-    <h2><span id="count">${shown().length}</span> cortes <span class="mut" style="font-weight:400">${{ instante: 'vigentes en ese momento', dia: 'ese día', todos: 'en total' }[S.scope]}</span></h2>
-    <div id="listItems">${itemsHTML()}</div>${legendHTML()}`;
+    <div class="sumline"><span><b>${act}</b> activos</span><span><b>${prog}</b> programados</span>${sinpub ? `<span class="warnc"><b>${sinpub}</b> sin publicar</span>` : ''}</div>
+    <div class="newrow">${store.can('cortes.crear') ? '<button class="btn pri big" data-act="new">＋ Nuevo corte</button>' : ''}<button class="btn sq" data-act="print" title="Parte para imprimir (PDF)" aria-label="Parte para imprimir">🖨</button></div>
+    <input id="q" class="search" type="search" placeholder="Buscar calle…" value="${esc(S.q)}" autocomplete="off">
+    <details class="more"><summary>Más filtros</summary><div class="filters">
+      <select id="ftipo" aria-label="Filtrar por tipo"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}"${S.ftipo === k ? ' selected' : ''}>${esc(v.human)}</option>`).join('')}</select>
+      <select id="faut" aria-label="Filtrar por quién autoriza"><option value="">Autoriza: todos</option>${AUTORIZA.map(a => `<option${S.faut === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select></div></details>
+    <div id="listItems" class="cards">${itemsHTML()}</div>`;
 }
 
-/* — Detalle — */
+/* — Ficha — */
 function viewDetail() {
   const c = S.cortes.find(x => x.id === S.sel);
   if (!c) return showScreen('list');
-  const agent = S.mode === 'agent', e = estado(c, S.view), i = parse(c.inicio), f = parse(c.fin), T = TIPOS[c.tipo] || {};
-  const row = (k, v) => (v ? `<dt>${k}</dt><dd>${esc(v).replace(/\n/g, '<br>')}</dd>` : '');
-  const aut = [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · ');
+  const ag = S.mode === 'agent', e = estado(c, S.view), T = TIPOS[c.tipo] || TIPOS.total, col = colorOf(c, e), w = cuando(c, S.view);
+  const i = parse(c.inicio), f = parse(c.fin), fl = d => `${diaTxt(d, S.view)} ${horaCorta(d)}`;
+  const tile = (k, v, wide) => (v ? `<div class="tile${wide ? ' wide' : ''}"><small>${k}</small><b>${esc(v).replace(/\n/g, '<br>')}</b></div>` : '');
   body.innerHTML = `
-    <div class="btns" style="margin-top:0"><button class="btn" data-act="back">‹ Volver</button><button class="btn" data-act="fit">Ver en el mapa</button>${agent ? '' : '<button class="btn" data-act="share">Compartir</button>'}</div>
-    <h2>${esc(c.calle)}</h2>
-    <div class="bs"><span class="badge ${e}">${ESTADO_LBL[e]}</span>${esLarga(c) ? '<span class="badge long">Larga duración</span>' : '<span class="badge">Puntual</span>'}${agent && c.publicado === false ? '<span class="badge draft">Sin publicar</span>' : ''}<span class="badge" style="background:${colorOf(c, e)};color:#fff">${esc(agent ? T.label : T.human)}</span></div>
-    <div class="dur">${esc(durText(c, S.view))}</div>
+    <div class="btns top"><button class="btn" data-act="back">‹ Volver</button><button class="btn" data-act="fit">Ver en el mapa</button>${ag ? '' : '<button class="btn" data-act="share">Compartir</button>'}</div>
+    <div class="dhead" style="background:${col}"><small>${esc(e === 'fin' ? 'Finalizado' : T.human)}</small><h2>${esc(c.calle)}</h2>${c.tramo ? `<p>${esc(c.tramo)}</p>` : ''}</div>
+    ${ag && c.publicado === false ? '<div class="warn">Este corte <b>no es visible</b> para los ciudadanos.</div>' : ''}
+    <div class="until"><i>🕒</i><div><b>${esc(w.principal)}</b>${(w.secundario || (ag && e === 'act' && i)) ? `<small>${esc(w.secundario || 'Desde ' + fl(i))}</small>` : ''}</div></div>
     ${c.desvio ? `<div class="desvio"><b>Desvío</b>${esc(c.desvio).replace(/\n/g, '<br>')}</div>` : ''}
-    <dl class="kv">
-      ${row('Tramo', c.tramo)}${row('Motivo', c.motivo)}
-      ${agent ? row('Solicita', c.organismo) : ''}${row('Autoriza', aut)}
-      ${row('Inicio', i ? `${diaTxt(i, S.view)} ${hora(i)} (${i.toLocaleDateString('es-ES')})` : '')}
-      ${row('Fin', f ? `${diaTxt(f, S.view)} ${hora(f)} (${f.toLocaleDateString('es-ES')})` : 'Sin fecha de fin prevista')}
-      ${row('Longitud', fmtLen(totalLen(c.segs)) + (c.segs.length > 1 ? ` en ${c.segs.length} tramos` : ''))}
-      ${agent ? row('Referencia', c.referencia) + row('Agente que registra', c.firma) + row('Notas internas', c.obs) + row('Visibilidad', c.publicado === false ? 'NO visible para los ciudadanos' : 'Visible para los ciudadanos') + row('Origen', c.origen === 'importado' ? 'Importado desde archivo' : '') +
-        row('Creado por', c.creado_por) + row('Modificado', c.modificado ? `${new Date(c.modificado).toLocaleString('es-ES')}${c.modificado_por ? ' · ' + c.modificado_por : ''}` : '') : ''}
-    </dl>
-    ${agent ? `<div class="btns">
-      ${store.can('cortes.publicar') ? `<button class="btn ${c.publicado === false ? 'pri' : ''}" data-act="pub">${c.publicado === false ? 'Publicar para ciudadanos' : 'Retirar de la vista pública'}</button>` : ''}
-      ${store.can('cortes.editar') ? '<button class="btn" data-act="edit">Editar datos</button><button class="btn" data-act="redraw">Redibujar trazado</button>' : ''}
-      ${store.can('cortes.crear') ? '<button class="btn" data-act="dup">Duplicar</button>' : ''}${store.can('cortes.borrar') ? '<button class="btn dng" data-act="del">Eliminar</button>' : ''}</div>` : ''}`;
+    <div class="tiles">${tile('Motivo', c.motivo)}${tile('Autoriza', [c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</div>
+    ${ag ? `<details class="more"><summary>Datos internos</summary><div class="tiles">${tile('Referencia', c.referencia)}${tile('Agente que registra', c.firma)}${tile('Notas', c.obs, true)}${tile('Longitud', fmtLen(totalLen(c.segs)) + (c.segs.length > 1 ? ` · ${c.segs.length} tramos` : ''))}${tile('Visible al público', c.publicado === false ? 'No' : 'Sí')}${tile('Origen', c.origen === 'importado' ? 'Importado de archivo' : 'Manual')}${tile('Creado por', c.creado_por)}${tile('Última modificación', c.modificado ? new Date(c.modificado).toLocaleString('es-ES') + (c.modificado_por ? ' · ' + c.modificado_por : '') : '', true)}</div></details>
+    <div class="acts">${store.can('cortes.editar') ? '<button class="btn pri" data-act="edit">Editar</button>' : ''}${store.can('cortes.publicar') ? `<button class="btn" data-act="pub">${c.publicado === false ? 'Publicar' : 'Retirar de lo público'}</button>` : ''}</div>
+    <details class="more"><summary>Más acciones</summary><div class="btns">${store.can('cortes.editar') ? '<button class="btn" data-act="redraw">Redibujar trazado</button>' : ''}${store.can('cortes.crear') ? '<button class="btn" data-act="dup">Duplicar</button>' : ''}${store.can('cortes.borrar') ? '<button class="btn dng" data-act="del">Eliminar</button>' : ''}</div></details>` : ''}`;
 }
 
 /* — Dibujo — */
@@ -297,71 +280,74 @@ function viewDraw() {
 }
 
 /* — Formulario — */
+const redondear5 = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), Math.floor(d.getMinutes() / 5) * 5);
 function viewForm() {
   const b = draft.base || {}, calle = b.calle || nameSummary();
+  const ini = b.inicio ? parse(b.inicio) : redondear5(new Date());
+  const fin = b.fin ? parse(b.fin) : (b.inicio ? null : new Date(+ini + 2 * 36e5)), sinFin = !fin;
+  const aut = AUTORIZA.includes(b.autoriza) ? b.autoriza : '', tipo = b.tipo || 'total';
   body.innerHTML = `
-    <h2>${draft.id ? 'Editar corte' : 'Datos del corte'}</h2>
-    <p class="mut">${fmtLen(totalLen(draft.segs.map(s => s.path)))} en ${draft.segs.length} ${draft.segs.length === 1 ? 'tramo' : 'tramos'}.</p>
+    <h2>${draft.id ? 'Editar corte' : 'Nuevo corte'}</h2>
+    <p class="mut small">${fmtLen(totalLen(draft.segs.map(s => s.path)))} marcados en el mapa${draft.segs.length > 1 ? ` · ${draft.segs.length} tramos` : ''}</p>
     <form id="f" autocomplete="off">
-      <label>Calle(s) afectada(s) *</label><input name="calle" required value="${esc(calle)}" placeholder="Ej.: Calle Grízar">
-      <label>Tramo (desde – hasta)</label><input name="tramo" value="${esc(b.tramo || '')}" placeholder="Ej.: entre C/ Santa Marta y C/ Real">
-      <div class="two">
-        <div><label>Tipo de afección</label><select name="tipo">${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}"${k === (b.tipo || 'total') ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>
-        <div><label>Motivo</label><select name="motivo">${opts(MOTIVOS, b.motivo)}</select></div>
+      <label class="fl">Calle(s) *</label><input name="calle" required value="${esc(calle)}" placeholder="Ej.: Calle Grízar">
+      <label class="fl">Tramo</label><input name="tramo" value="${esc(b.tramo || '')}" placeholder="Ej.: entre C/ Santa Marta y C/ Real">
+      <label class="fl">Tipo de corte</label>
+      <div class="choices c2">${Object.entries(TIPOS).map(([k, v]) => `<label><input type="radio" name="tipo" value="${k}"${k === tipo ? ' checked' : ''}><span><i style="background:${v.color}"></i>${esc(v.human)}</span></label>`).join('')}</div>
+      <label class="fl">Motivo</label><select name="motivo">${opts(MOTIVOS, b.motivo)}</select>
+      <label class="fl">Quién autoriza *</label>
+      <div class="choices c2">${AUTORIZA.map(a => `<label><input type="radio" name="autoriza" value="${esc(a)}"${a === aut ? ' checked' : ''}><span>${esc(a)}</span></label>`).join('')}</div>
+      <label class="fl">Cuándo</label>
+      <div class="when2">
+        <div class="wbox"><small>Desde</small><input type="date" name="ini_f" required value="${fechaInput(ini)}"><input type="time" name="ini_h" required value="${horaInput(ini)}"></div>
+        <div class="wbox"><small>Hasta</small><input type="date" name="fin_f" value="${fin ? fechaInput(fin) : ''}" ${sinFin ? 'disabled' : ''}><input type="time" name="fin_h" value="${fin ? horaInput(fin) : ''}" ${sinFin ? 'disabled' : ''}>
+          <label class="chk"><input type="checkbox" name="sinfin" ${sinFin ? 'checked' : ''}> Sin fecha de fin</label></div>
       </div>
-      <h3>Quién lo solicita y quién lo autoriza</h3>
-      <div class="two">
-        <div><label>Solicita / origina</label><select name="organismo">${opts(SOLICITA, b.organismo || 'Policía Local', true)}</select></div>
-        <div><label>Autoriza *</label><select name="autoriza" required>${opts(AUTORIZA, b.autoriza, true)}</select></div>
-      </div>
-      <label>Detalle de la autorización (visible al público)</label><input name="autoriza_detalle" value="${esc(b.autoriza_detalle || '')}" placeholder="Ej.: Decreto de Alcaldía 123/2026 · Concejalía de Obras">
-      <h3>Duración</h3>
-      <div class="two">
-        <div><label>Inicio *</label><input type="datetime-local" name="inicio" required value="${esc(b.inicio || toInput(new Date()))}"></div>
-        <div><label>Fin (vacío = sin fecha)</label><input type="datetime-local" name="fin" value="${esc(b.fin || '')}"></div>
-      </div>
-      <div class="chips" id="chips">
-        <button type="button" data-h="1">+1 h</button><button type="button" data-h="2">+2 h</button><button type="button" data-h="4">+4 h</button>
-        <button type="button" data-h="day">Hasta fin del día</button><button type="button" data-h="168">+1 semana</button><button type="button" data-h="0">Sin fin</button>
-      </div>
-      <label>Desvío recomendado (visible al público)</label><textarea name="desvio" placeholder="Ej.: Circular por C/ Real y Avda. de Extremadura">${esc(b.desvio || '')}</textarea>
-      <h3>Uso interno</h3>
-      <label>Referencia (expediente, nº de registro…)</label><input name="referencia" value="${esc(b.referencia || '')}">
-      <label>Agente que registra (n.º de identificación)</label><input name="firma" value="${esc(b.firma || '')}" placeholder="Opcional">
-      <label>Notas internas (no visibles al público)</label><textarea name="obs">${esc(b.obs || '')}</textarea>
-      <label class="chk"><input type="checkbox" name="publicado" ${b.publicado === false ? '' : 'checked'}> Visible para los ciudadanos</label>
-      <div class="btns"><button type="button" class="btn" data-act="backdraw">‹ Trazado</button><button type="button" class="btn" data-act="cancel">Cancelar</button><button type="submit" class="btn pri">Guardar</button></div>
+      <label class="fl">Desvío <span class="opt">(opcional)</span></label><textarea name="desvio" placeholder="Ej.: Circular por C/ Real y Avda. de Extremadura">${esc(b.desvio || '')}</textarea>
+      <details class="more"><summary>Más datos <span class="opt">(opcional, uso interno)</span></summary>
+        <label class="fl">Detalle de la autorización <span class="opt">(se muestra al público)</span></label><input name="autoriza_detalle" value="${esc(b.autoriza_detalle || '')}" placeholder="Ej.: Decreto 123/2026">
+        <label class="fl">Referencia / expediente</label><input name="referencia" value="${esc(b.referencia || '')}">
+        <label class="fl">Agente que registra (n.º de identificación)</label><input name="firma" value="${esc(b.firma || '')}">
+        <label class="fl">Notas internas</label><textarea name="obs">${esc(b.obs || '')}</textarea></details>
+      <label class="switch"><input type="checkbox" name="publicado" ${b.publicado === false ? '' : 'checked'}><span class="trk"></span><span>Publicar para los ciudadanos</span></label>
+      <div class="fbar"><button type="button" class="btn" data-act="backdraw">‹ Trazado</button><button type="button" class="btn" data-act="cancel">Cancelar</button><button type="submit" class="btn pri">Guardar</button></div>
     </form>`;
-  $('#chips').onclick = ev => {
-    const h = ev.target.dataset.h; if (h === undefined) return;
-    const f = $('#f'), ini = parse(f.inicio.value) || new Date();
-    if (h === '0') f.fin.value = '';
-    else if (h === 'day') f.fin.value = toInput(new Date(ini.getFullYear(), ini.getMonth(), ini.getDate(), 23, 59));
-    else f.fin.value = toInput(new Date(+ini + (+h) * 36e5));
+  const f = $('#f');
+  const juntar = (a, h) => (f[a].value && f[h].value ? new Date(f[a].value + 'T' + f[h].value) : null);
+  f.onchange = ev => {
+    const n = ev.target.name;
+    if (n === 'sinfin') { ['fin_f', 'fin_h'].forEach(k => { f[k].disabled = ev.target.checked; }); if (!ev.target.checked && !f.fin_f.value) { const d = new Date((juntar('ini_f', 'ini_h') || new Date()).getTime() + 36e5); f.fin_f.value = fechaInput(d); f.fin_h.value = horaInput(d); } }
+    if ((n === 'ini_f' || n === 'ini_h') && !f.sinfin.checked) { const a = juntar('ini_f', 'ini_h'), z = juntar('fin_f', 'fin_h'); if (a && (!z || z < a)) { const d = new Date(+a + 36e5); f.fin_f.value = fechaInput(d); f.fin_h.value = horaInput(d); } }
   };
-  $('#f').onsubmit = ev => { ev.preventDefault(); saveForm(new FormData(ev.target)); };
+  f.onsubmit = ev => { ev.preventDefault(); saveForm(new FormData(ev.target)); };
 }
 async function saveForm(fd) {
   const v = Object.fromEntries(fd.entries());
   v.calle = (v.calle || '').trim();
   if (!v.calle) return toast('Indica la calle afectada');
   if (!v.autoriza) return toast('Indica quién autoriza el corte');
-  if (!v.inicio) return toast('Indica la fecha de inicio');
-  if (v.fin && parse(v.fin) < parse(v.inicio)) return toast('La fecha de fin es anterior a la de inicio');
+  if (!v.ini_f || !v.ini_h) return toast('Indica cuándo empieza');
+  const inicio = `${v.ini_f}T${v.ini_h}`;
+  let fin = '';
+  if (v.sinfin !== 'on') {
+    if (!v.fin_f || !v.fin_h) return toast('Indica hasta cuándo o marca «Sin fecha de fin»');
+    fin = `${v.fin_f}T${v.fin_h}`;
+    if (fin < inicio) return toast('El corte termina antes de empezar');
+  }
   const data = {
-    calle: v.calle, tramo: v.tramo.trim(), tipo: v.tipo, motivo: v.motivo, organismo: v.organismo, autoriza: v.autoriza, autoriza_detalle: v.autoriza_detalle.trim(),
-    referencia: v.referencia.trim(), firma: (v.firma || '').trim(), inicio: v.inicio, fin: v.fin || '', desvio: v.desvio.trim(), obs: v.obs.trim(), publicado: v.publicado === 'on',
+    calle: v.calle, tramo: (v.tramo || '').trim(), tipo: v.tipo || 'total', motivo: v.motivo, autoriza: v.autoriza, autoriza_detalle: (v.autoriza_detalle || '').trim(),
+    referencia: (v.referencia || '').trim(), firma: (v.firma || '').trim(), inicio, fin, desvio: (v.desvio || '').trim(), obs: (v.obs || '').trim(), publicado: v.publicado === 'on',
     segs: draft.segs.map(s => s.path.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)])),
   };
   const prev = draft.id ? S.cortes.find(c => c.id === draft.id) : null;
   const id = draft.id || uid();
-  const corte = prev ? { ...prev, ...data } : { id, origen: (draft.base && draft.base.origen) || 'manual', ...data };
+  const corte = prev ? { ...prev, ...data } : { id, origen: (draft.base && draft.base.origen) || 'manual', organismo: '', ...data };
   try { await store.save(corte); }
   catch (e) { return toast('No se pudo guardar: ' + e.message); }
   if (draft.fromImport && S.imp) S.imp.items = S.imp.items.filter(x => x !== draft.fromImport);
   endDraw(); await reload();
   S.sel = id; const c = S.cortes.find(x => x.id === id);
-  if (c && !visible(c)) { S.scope = 'todos'; S.ftipo = S.faut = S.q = ''; renderTop(); }
+  if (c && !visible(c)) { S.when = 'todos'; S.ftipo = S.faut = S.q = ''; }
   renderMap(); showScreen('detail'); if (c) fitCorte(c); toast('Corte guardado');
 }
 
@@ -479,7 +465,8 @@ body.addEventListener('click', ev => {
   const act = t.dataset.act, c = S.cortes.find(x => x.id === (t.dataset.id || S.sel)), I = S.imp;
   guard(async () => {
     switch (act) {
-      case 'ctab': S.ctab = t.dataset.t; S.sel = null; renderMap(); showScreen('list'); break;
+      case 'toggle': S.listOpen = !(S.listOpen === null ? innerWidth >= 900 : S.listOpen); showScreen('list'); break;
+      case 'when': S.when = t.dataset.w; S.sel = null; renderMap(); showScreen('list'); break;
       case 'tab': S.tab = t.dataset.t; showScreen('list'); break;
       case 'aud-verify': { const r = await store.verifyAudit(); $('#audVerify').innerHTML = r.ok ? `<div class="hint">✔ Cadena íntegra: ${r.total} registros sin alteraciones.<br><small>Sello del último registro: ${esc(r.ultimo_hash.slice(0, 20))}…</small></div>` : `<div class="warn"><b>✘ ALERTA:</b> el registro nº ${r.fallo_en} ha sido alterado o falta alguno anterior. Avisa a Informática y conserva una copia de la base de datos.</div>`; break; }
       case 'aud-csv': exportAuditCSV(); break;
@@ -493,7 +480,7 @@ body.addEventListener('click', ev => {
       case 'share': { const url = location.origin + location.pathname + '#/ciudadano'; if (navigator.share) navigator.share({ title: 'Cortes de calle · Don Benito', url }).catch(() => {}); else { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } break; }
       case 'edit': draft = newDraft(c); draft.stage = 'form'; renderMap(); showScreen('form'); break;
       case 'redraw': startDraw(c); break;
-      case 'dup': { const cp = JSON.parse(JSON.stringify(c)); cp.id = uid(); cp.calle += ' (copia)'; cp.publicado = false; delete cp.creado; delete cp.modificado; delete cp.creado_por; delete cp.modificado_por; await store.save(cp); await reload(); S.scope = 'todos'; renderTop(); select(cp.id, false); toast('Duplicado (sin publicar)'); break; }
+      case 'dup': { const cp = JSON.parse(JSON.stringify(c)); cp.id = uid(); cp.calle += ' (copia)'; cp.publicado = false; delete cp.creado; delete cp.modificado; delete cp.creado_por; delete cp.modificado_por; await store.save(cp); await reload(); S.when = 'todos'; renderTop(); select(cp.id, false); toast('Duplicado (sin publicar)'); break; }
       case 'del': if (confirm(`¿Eliminar el corte «${c.calle}»? Quedará registrado en la auditoría y un mando podrá restaurarlo.`)) { await store.remove(c.id); S.sel = null; await reload(); renderMap(); showScreen('list'); toast('Corte eliminado'); } break;
       case 'pub': await store.save({ ...c, publicado: c.publicado === false }); await reload(); renderMap(); showScreen('detail'); toast(c.publicado === false ? 'Publicado para los ciudadanos' : 'Retirado de la vista pública'); break;
       case 'print': printReport(); break;
@@ -514,7 +501,7 @@ body.addEventListener('click', ev => {
       case 'imp-draw': { const x = I.items[+t.dataset.i]; draftLayer.clearLayers(); startDraw({ ...x.corte, segs: x.segs.length ? x.segs : [] }, x); break; }
       case 'imp-go': {
         const list = I.items.filter(x => x.sel && x.segs.length).map(x => ({ id: uid(), ...x.corte, segs: x.segs.map(p => p.map(q => [+q[0].toFixed(6), +q[1].toFixed(6)])) }));
-        await store.saveMany(list, { tipo: 'importacion', archivo: I.name, filas: I.items.length }); S.imp = null; draftLayer.clearLayers(); await reload(); S.tab = 'cortes'; S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
+        await store.saveMany(list, { tipo: 'importacion', archivo: I.name, filas: I.items.length }); S.imp = null; draftLayer.clearLayers(); await reload(); S.tab = 'cortes'; S.when = 'todos'; renderTop(); renderMap(); showScreen('list');
         toast(`${list.length} cortes importados SIN publicar. Revísalos y publícalos uno a uno.`); break;
       }
     }
@@ -530,6 +517,7 @@ body.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'ftipo') { S.ftipo = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'audacc') { S.auditF.accion = t.value; pintarAuditoria(); }
+  else if (t.id === 'fechaSel') { if (t.value) { S.when = 'fecha'; S.fecha = t.value; S.sel = null; renderMap(); showScreen('list'); } }
   else if (t.id === 'faut') { S.faut = t.value; refreshItems(); renderMap(); }
   else if (t.id === 'stq') { const b = streetBounds(t.value); if (b) map.fitBounds(b, { padding: [30, 30], maxZoom: 18 }); }
   else if (t.dataset.fmap) { S.imp.map[t.dataset.fmap] = t.value === '' ? undefined : +t.value; }
@@ -553,11 +541,8 @@ function renderTop() {
   if (S.mode === 'citizen') {
     topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local de Don Benito</b><span>Cortes de calle</span></div><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>`;
   } else if (S.mode === 'agent') {
-    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Policía Local · Panel de cortes</b><span>${esc(store.userName())}</span></div>
-      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>
-      ${store.can('cortes.ver') ? `<div class="row2"><input type="datetime-local" id="when" aria-label="Fecha y hora a consultar" value="${toInput(S.view)}"><button id="btnNow" class="chipbtn">Ahora</button>
-      <select id="scope" aria-label="Qué cortes mostrar"><option value="instante">En ese instante</option><option value="dia">Todo ese día</option><option value="todos">Todos los cortes</option></select></div>` : ''}`;
-    if ($('#scope')) $('#scope').value = S.scope;
+    topbar.innerHTML = `<div class="row1">${escudo('sh')}<div class="ttl"><b>Panel de cortes</b><span>Policía Local · ${esc(store.userName())}</span></div>
+      <span class="netchip ${S.netChip.cls}" id="netchip" title="Estado del callejero">${esc(S.netChip.txt)}</span><button id="btnMenu" class="iconbtn" aria-label="Menú">⋯</button></div>`;
   }
 }
 function refreshAll() {
@@ -566,14 +551,21 @@ function refreshAll() {
   else if (S.screen === 'list' && !(document.activeElement && ['q', 'ftipo', 'faut'].includes(document.activeElement.id)) && (S.mode === 'citizen' || S.tab === 'cortes')) showScreenKeepScroll();
 }
 function showScreenKeepScroll() { const y = body.scrollTop; showScreen('list'); body.scrollTop = y; }
-topbar.addEventListener('change', ev => {
-  if (ev.target.id === 'when') { if (!ev.target.value) return; S.live = false; S.view = new Date(ev.target.value); refreshAll(); }
-  if (ev.target.id === 'scope') { S.scope = ev.target.value; refreshAll(); }
-});
-topbar.addEventListener('click', ev => {
-  if (ev.target.id === 'btnNow') { S.live = true; S.view = new Date(); $('#when').value = toInput(S.view); refreshAll(); }
-  if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); }
-});
+topbar.addEventListener('click', ev => { if (ev.target.closest('#btnMenu')) { ev.stopPropagation(); openMenu(); } });
+
+/* Leyenda sobre el mapa (solo panel de agentes) */
+let legendCtl = null;
+function setLegend(on) {
+  if (on && !legendCtl) {
+    legendCtl = L.control({ position: 'bottomleft' });
+    legendCtl.onAdd = () => {
+      const d = L.DomUtil.create('div', 'maplegend' + (innerWidth < 900 ? ' min' : ''));
+      d.innerHTML = '<b>Leyenda <i>▾</i></b>' + Object.values(TIPOS).map(t => `<div><s style="background:${t.color}"></s>${esc(t.human)}</div>`).join('') + '<div><s class="dash"></s>Programado</div><div><s style="background:' + GREY + '"></s>Finalizado</div>';
+      L.DomEvent.disableClickPropagation(d); d.onclick = () => d.classList.toggle('min'); return d;
+    };
+    legendCtl.addTo(map);
+  } else if (!on && legendCtl) { legendCtl.remove(); legendCtl = null; }
+}
 
 /* ───────── Menú ───────── */
 const menu = $('#menu');
@@ -644,7 +636,7 @@ $('#fileGeo').onchange = ev => guard(async () => {
       organismo: String(p.organismo || ''), autoriza: String(p.autoriza || ''), autoriza_detalle: String(p.autoriza_detalle || ''), referencia: String(p.referencia || ''),
       inicio: dt(p.inicio) || toInput(new Date()), fin: dt(p.fin), desvio: String(p.desvio || ''), obs: String(p.obs || ''), publicado: p.publicado !== false, origen: p.origen || 'manual', segs });
   }
-  await store.saveMany(list, { tipo: 'importacion', archivo: file.name, filas: fc.features.length }); await reload(); S.scope = 'todos'; renderTop(); renderMap(); showScreen('list');
+  await store.saveMany(list, { tipo: 'importacion', archivo: file.name, filas: fc.features.length }); await reload(); S.when = 'todos'; renderTop(); renderMap(); showScreen('list');
   toast(`Importados ${list.length} cortes${skipped ? `, ${skipped} omitidos` : ''}`);
 });
 $('#fileTabla').onchange = ev => guard(async () => {
@@ -653,10 +645,11 @@ $('#fileTabla').onchange = ev => guard(async () => {
   S.imp = { table, name: file.name, map: imp.autoMap(table.headers), items: null }; S.tab = 'import'; showScreen('list');
 });
 
+const periodoTxt = () => ({ ahora: 'cortes vigentes en este momento', hoy: 'cortes de hoy', manana: 'cortes de mañana', fecha: 'cortes del ' + (S.fecha ? new Date(S.fecha + 'T00:00').toLocaleDateString('es-ES') : ''), todos: 'todos los cortes' }[S.when]);
 function printReport() {
-  const list = shown(), d = S.view;
+  const list = shown(), d = S.when === 'manana' ? addDays(S.view, 1) : (S.when === 'fecha' && S.fecha ? new Date(S.fecha + 'T12:00') : S.view);
   const fecha = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  $('#report').innerHTML = `<div class="rhead">${escudo('rsh')}<div><h1>Policía Local de Don Benito</h1><h2>Parte de cortes de calle</h2><p>${esc(fecha)}, ${hora(d)} · ${esc({ instante: 'cortes vigentes en ese momento', dia: 'cortes de ese día', todos: 'todos los cortes' }[S.scope])}</p></div></div>
+  $('#report').innerHTML = `<div class="rhead">${escudo('rsh')}<div><h1>Policía Local de Don Benito</h1><h2>Parte de cortes de calle</h2><p>${esc(fecha)}, ${hora(d)} · ${esc(periodoTxt())}</p></div></div>
     <table><thead><tr><th>Calle / tramo</th><th>Afección</th><th>Desde</th><th>Hasta</th><th>Autoriza</th><th>Desvío</th></tr></thead><tbody>${list.map(c => {
       const i = parse(c.inicio), f = parse(c.fin);
       return `<tr><td><b>${esc(c.calle)}</b><br>${esc(c.tramo)}</td><td>${esc((TIPOS[c.tipo] || {}).label)}<br><small>${esc(c.motivo)}</small></td><td>${i ? i.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : ''}</td><td>${f ? f.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}</td><td>${esc([c.autoriza, c.autoriza_detalle].filter(Boolean).join(' · '))}</td><td>${esc(c.desvio)}</td></tr>`;
@@ -714,10 +707,11 @@ async function reload() {
 const primeraPestana = () => (TABS.find(t => tabOK(t[2])) || TABS[0])[0];
 async function enter(mode) {
   if (draft) endDraw();
+  setLegend(false);
   S.mode = mode; document.body.dataset.mode = mode; $('#landing').hidden = mode !== 'landing';
   if (mode === 'landing') { renderLanding(); renderMap(); return; }
-  S.sel = null; S.screen = 'list'; S.tab = mode === 'agent' ? primeraPestana() : 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.live = true; S.imp = null;
-  renderTop(); await reload();
+  S.sel = null; S.screen = 'list'; S.tab = mode === 'agent' ? primeraPestana() : 'cortes'; S.q = S.ftipo = S.faut = ''; S.view = new Date(); S.when = 'ahora'; S.fecha = null; S.listOpen = null; S.imp = null;
+  renderTop(); setLegend(mode === 'agent' && store.can('cortes.ver')); await reload();
   if (mode === 'agent' && store.can('cortes.crear')) loadNet(false, setNetChip);
   renderMap(); showScreen('list'); setTimeout(() => map.invalidateSize(), 50);
 }
@@ -731,7 +725,7 @@ window.addEventListener('hashchange', router);
 setInterval(() => {
   if (S.mode !== 'citizen' && S.mode !== 'agent') return;
   if (draft || S.screen === 'form' || S.screen === 'draw') return;
-  guard(async () => { await reload(); if (S.live) { S.view = new Date(); const w = $('#when'); if (w) w.value = toInput(S.view); } refreshAll(); });
+  guard(async () => { await reload(); S.view = new Date(); refreshAll(); });
 }, 60000);
 
 /* ───────── Arranque ───────── */
