@@ -3,3 +3,11 @@ node_modules/
 *.db
 *.db-journal
 pruebas/*.png
+
+# Datos reales: nunca al repositorio (solo se permiten los ficheros de ejemplo de pruebas/)
+*.xlsx
+*.xls
+*.csv
+*.pdf
+!pruebas/import.xlsx
+!pruebas/import.csv

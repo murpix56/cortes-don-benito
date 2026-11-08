@@ -31,6 +31,7 @@ Aplicación web **estática** (sin build) para mostrar los cortes de calle de Do
 3. Los nombres de repositorio de GitHub no admiten «ñ». Las subidas necesitan que la app de Claude tenga acceso al repositorio (si da 403: pedir al usuario que lo conceda en https://github.com/apps/claude/installations/select_target).
 4. El usuario prueba en iPhone (Safari) y en Mac: comprobar siempre ancho móvil (~390 px) y escritorio.
 5. Publicar = commit + `git push origin main` (no usar PR salvo que lo pida). Terminar los commits con las líneas de atribución que indique el sistema.
+6. **Privacidad (repositorio público):** no hay datos sensibles (revisado, historial incluido, 2026-11-08). `index.html` lleva `noindex, nofollow, noarchive` (petición a buscadores, no garantía). **Nunca subir al repositorio un Excel/CSV/PDF real** (el `.gitignore` los excluye salvo los de ejemplo de `pruebas/`): aunque se borre, queda en el historial. Los cortes del modo local viven en el navegador, no en el repositorio. Los Excel previstos solo contienen calle, horarios y motivo (sin datos personales); si algún día traen nombres, DNI o direcciones de personas, anonimizar en local antes de usarlos. Para uso real con cortes oficiales: servidor propio en el Ayuntamiento + repositorio privado.
 
 ## Pruebas
 Ver `pruebas/LEEME.md` (Playwright con callejero simulado; sin Internet). Tras cualquier cambio: `node pruebas/local.js` y mirar capturas con `pruebas/ui.js`.
